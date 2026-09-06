@@ -1,0 +1,26 @@
+# Personal game saves and presets
+saves/
+configs/
+*.sl2
+*.bak
+
+# Cheat Engine and other private/runtime artifacts
+*.CT
+*.ct
+*.exe
+*.dll
+bin/
+binaries/
+runtime/
+private/
+backups/
+logs/
+work/
+
+# Local/editor noise
+__pycache__/
+*.pyc
+.venv/
+.DS_Store
+Thumbs.db
+
