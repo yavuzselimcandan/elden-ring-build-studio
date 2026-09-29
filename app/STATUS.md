@@ -1,9 +1,12 @@
-# Installed behavior
+# Runtime status
 
-Open the desktop shortcut to Build Studio. Open your existing preset, or create a new one and choose catalog items. Edit attributes, item names, quantities, upgrades and Ash of War in the grid. Changes are saved and resolved automatically after leaving the edited grid. Save commits any active edit immediately.
+Build Studio loads the local catalog and resolves preset names to a full typed plan: attributes plus weapons/upgrades, armor, talismans, goods, and Ash IDs. Requests are not marked applied without a matching runtime receipt; unresolved or unsupported rows remain visible and pending.
 
-The 6,352 catalog entries come from the local Hexinton v8.0.1 table. Name resolution writes a companion `.plan.json` containing separate IDs, upgrades and quantities. Unknown names remain explicit issues. This validates the table catalog only, not compatibility with the running game.
+Verified live, offline-only operations:
 
-LIVE GAME APPLICATION IS NOT IMPLEMENTED/VERIFIED. The installed game is file version 2.2.0.0. Hexinton v8.0.1 targets 2.7.0.0; downloaded v5.0 targets 2.6.1.0. A compatible table/runtime bridge is required for live item/stat changes. The app does not launch CE or claim that saving grants items.
+- Stats: VIG55 MIND38 END33 STR16 DEX13 INT80 FAI7 ARC9, with backup, pointer/PID checks, readback, and rollback protection. Current level is 173; level is never written.
+- Items: Spellblade's Traveling Attire (130100), Cannon of Haima (4080), and Gavel of Haima (4120), each with fresh backup and inventory readback.
 
-Tested: UI construction, catalog loading, existing Sovereign Spellblade import, Magic Claymore ID/upgrade/Ash separation, unknown-item reporting, invalid-stat rejection. Game item grants, equipment changes, affinities and stat writes have not been tested or implemented.
+Current preset warning: `Godrick's Great Rune` is ambiguous in the catalog and is not auto-selected. A `PARTIAL:` receipt is terminal for the request and leaves unsupported rows visible; only `OK: APPLIED` marks the full plan applied. Equipping/slot placement remains unsupported even when item grants succeed.
+
+The runtime is offline-only and EAC-gated. Game file version is 2.2.0.0; Hexinton table source is v8.0.1 targeting 2.7.0.0. `GrantItem` in the review module is not the general UI path; only the explicitly allowlisted verified item flows are enabled.
