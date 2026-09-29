@@ -204,7 +204,8 @@
         <StackPanel DockPanel.Dock="Bottom" Margin="0,12,0,0">
           <WrapPanel>
             <Button Name="NewBtn" Content="New" Margin="0,0,6,6"/>
-            <Button Name="PasteBtn" Content="Paste JSON" Margin="0,0,6,6" ToolTip="Import a preset JSON from the clipboard (e.g. produced in chat)"/>
+            <Button Name="PromptBtn" Content="Gemini prompt" Style="{StaticResource Primary}" Margin="0,0,6,6" ToolTip="Copy the build-extraction prompt for YouTube's Ask (Gemini) box"/>
+            <Button Name="PasteBtn" Content="Paste build" Margin="0,0,6,6" ToolTip="Import the build text or JSON from the clipboard (also Ctrl+V, or automatically when you return to this window)"/>
             <Button Name="FolderBtn" Content="Folder" Margin="0,0,6,6"/>
           </WrapPanel>
         </StackPanel>

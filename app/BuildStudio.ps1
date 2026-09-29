@@ -2,6 +2,7 @@
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase
 . (Join-Path $PSScriptRoot 'BuildModel.ps1')
+. (Join-Path $PSScriptRoot 'BuildText.ps1')
 . (Join-Path $PSScriptRoot 'backend.ps1')
 
 $root = $PSScriptRoot
@@ -15,7 +16,7 @@ $w = [Windows.Markup.XamlReader]::Load((New-Object System.Xml.XmlNodeReader ([xm
 $iconPath = Join-Path $root 'assets\BuildStudio.ico'
 if (Test-Path $iconPath) { try { $w.Icon = [Windows.Media.Imaging.BitmapFrame]::Create([Uri]$iconPath) } catch { } }
 $ui = @{}
-foreach ($n in 'PresetFilter','PresetList','NewBtn','PasteBtn','FolderBtn','ConnChip','ConnDot','ConnText','AutoApply','ApplyBtn','BuildName','SourceText','StatusText','LevelText','StatsGrid','EquipPanel','InventoryPanel','PickerTitle','PickerSub','SearchBox','CategoryChips','Results','SelectedName','UpgradeBox','UpgradeInput','QtyInput','AshBox','AshInput','PlaceBtn','ClearSlotBtn','IssuesTitle','IssuesPanel') {
+foreach ($n in 'PresetFilter','PresetList','NewBtn','PasteBtn','PromptBtn','FolderBtn','ConnChip','ConnDot','ConnText','AutoApply','ApplyBtn','BuildName','SourceText','StatusText','LevelText','StatsGrid','EquipPanel','InventoryPanel','PickerTitle','PickerSub','SearchBox','CategoryChips','Results','SelectedName','UpgradeBox','UpgradeInput','QtyInput','AshBox','AshInput','PlaceBtn','ClearSlotBtn','IssuesTitle','IssuesPanel') {
     $ui[$n] = $w.FindName($n)
 }
 
@@ -116,7 +117,7 @@ function Save-Current {
 }
 
 function Save-Settings {
-    try { [pscustomobject]@{ lastPreset = $State.path; autoApply = [bool]$ui.AutoApply.IsChecked } | ConvertTo-Json | Set-Content -LiteralPath $settingsPath -Encoding UTF8 } catch { }
+    try { [pscustomobject]@{ lastPreset = $State.path; autoApply = [bool]$ui.AutoApply.IsChecked; lastClipboardHash = $State.lastClipboardHash } | ConvertTo-Json | Set-Content -LiteralPath $settingsPath -Encoding UTF8 } catch { }
 }
 
 function Set-Dirty {
@@ -439,18 +440,27 @@ $ui.PresetFilter.Add_TextChanged({ Update-PresetList $State.path })
 $ui.PresetList.Add_SelectionChanged({ if ($State.loading) { return }; $it = $ui.PresetList.SelectedItem; if ($it -and $it.Path -ne $State.path) { if ($State.dirty) { [void](Save-Current); $State.dirty = $false }; Open-Preset $it.Path } })
 $ui.NewBtn.Add_Click({ if ($State.dirty) { [void](Save-Current); $State.dirty = $false }; Import-BuildObject ([pscustomobject]@{ name = 'New build'; items = @(); attributes = @{} }) $null; $ui.PresetList.SelectedItem = $null; $ui.BuildName.Focus() | Out-Null; $ui.BuildName.SelectAll(); Set-Status 'New build. Click a slot to start equipping.' })
 $ui.FolderBtn.Add_Click({ Start-Process explorer.exe $dir })
-$ui.PasteBtn.Add_Click({
-    try {
-        $text = [Windows.Clipboard]::GetText()
-        $text = ($text -replace '(?s)^.*?```(?:json)?\s*', '' -replace '(?s)```.*$', '').Trim()
-        if (-not $text.StartsWith('{')) { $start = $text.IndexOf('{'); if ($start -ge 0) { $text = $text.Substring($start) } }
-        $b = $text | ConvertFrom-Json
-        if (-not ($b.items -or $b.equipment)) { throw 'clipboard JSON has no items' }
-        if ($State.dirty) { [void](Save-Current); $State.dirty = $false }
-        Import-BuildObject $b $null
-        [void](Save-Current)
-        Set-Status "Imported '$($State.name)' from clipboard — $(@($State.plan.items | Where-Object { -not $_.unresolved }).Count) of $(@($State.plan.items).Count) items matched."
-    } catch { Set-Status "Clipboard does not contain a preset JSON ($($_.Exception.Message))." }
+# Clipboard import: the line format from the Gemini prompt, or preset JSON. Each distinct text is imported once.
+function Get-TextHash([string]$t) { [BitConverter]::ToString([Security.Cryptography.SHA1]::Create().ComputeHash([Text.Encoding]::UTF8.GetBytes($t))) }
+function Import-FromClipboard([switch]$Quiet) {
+    try { $text = [Windows.Clipboard]::GetText() } catch { return }
+    if (-not (Test-BuildText $text)) { if (-not $Quiet) { Set-Status 'Clipboard has no build. Copy the chat answer (BUILD: … lines or preset JSON) first.' }; return }
+    $hash = Get-TextHash $text
+    if ($Quiet -and $hash -eq $State.lastClipboardHash) { return }
+    $State.lastClipboardHash = $hash; Save-Settings
+    $b = ConvertFrom-BuildText $text
+    if (-not $b) { Set-Status 'Could not read a build from the clipboard text.'; return }
+    if ($State.dirty) { [void](Save-Current); $State.dirty = $false }
+    Import-BuildObject $b $null
+    [void](Save-Current)
+    $ui.SourceText.Text = "Imported from clipboard · " + [IO.Path]::GetFileName($State.path)
+    $ok = @($State.plan.items | Where-Object { -not $_.unresolved }).Count
+    Set-Status "Imported '$($State.name)' from clipboard — $ok of $(@($State.plan.items).Count) items matched$(if ($ok -lt @($State.plan.items).Count) { '; fix the red ones on the right' })."
+}
+$ui.PasteBtn.Add_Click({ Import-FromClipboard })
+$ui.PromptBtn.Add_Click({
+    [Windows.Clipboard]::SetText($script:GeminiPrompt)
+    Set-Status 'Prompt copied. On YouTube press "Ask" (✦), paste it, send, then copy Gemini''s answer — Build Studio imports it when you come back.'
 })
 $ui.ApplyBtn.Add_Click({ if ($State.dirty) { [void](Save-Current); $State.dirty = $false }; Update-Connection; Invoke-Apply -Force })
 $ui.ConnChip.Cursor = [Windows.Input.Cursors]::Hand
@@ -476,6 +486,7 @@ $w.Add_Closed({ $saveTimer.Stop(); $pollTimer.Stop(); if ($State.dirty) { try { 
 
 $settings = $null; try { if (Test-Path $settingsPath) { $settings = Get-Content -LiteralPath $settingsPath -Raw | ConvertFrom-Json } } catch { }
 $ui.AutoApply.IsChecked = [bool]$settings.autoApply
+$State.lastClipboardHash = [string]$settings.lastClipboardHash
 Update-PresetList $null
 $startPath = if ($Preset) { $Preset } elseif ($settings.lastPreset -and (Test-Path -LiteralPath $settings.lastPreset)) { $settings.lastPreset } else { $null }
 if ($startPath) { Open-Preset $startPath; Update-PresetList $startPath } else { Import-BuildObject ([pscustomobject]@{ name = 'New build'; items = @(); attributes = @{} }) $null }
@@ -488,5 +499,7 @@ if ($CheckOnly) {
 }
 $saveTimer.Start(); $pollTimer.Start()
 $State.focused = $false
-$w.Add_Activated({ if (-not $State.focused) { $State.focused = $true; [Windows.Input.Keyboard]::Focus($ui.SearchBox) | Out-Null } })
+$w.Add_Activated({ if (-not $State.focused) { $State.focused = $true; [Windows.Input.Keyboard]::Focus($ui.SearchBox) | Out-Null }; Import-FromClipboard -Quiet })
+# Ctrl+V anywhere outside a text box imports a copied build.
+$w.Add_PreviewKeyDown({ param($s, $e) if ($e.Key -eq 'V' -and [Windows.Input.Keyboard]::Modifiers -eq 'Control' -and -not ([Windows.Input.Keyboard]::FocusedElement -is [Windows.Controls.TextBox])) { Import-FromClipboard; $e.Handled = $true } })
 [void]$w.ShowDialog()

@@ -239,10 +239,10 @@ namespace ERBS
     public static class ItemParser
     {
         static readonly Regex Upgrade = new Regex(@"\s*\+\s*(\d{1,2})\s*$");
-        static readonly Regex AshParen = new Regex(@"\s*[\(\[]\s*(?:ash of war|aow|skill)\s*:\s*([^\)\]]+)[\)\]]\s*", RegexOptions.IgnoreCase);
-        static readonly Regex AshPipe = new Regex(@"\s*\|\s*(?:ash of war\s*:\s*)?(.+)$", RegexOptions.IgnoreCase);
-        static readonly Regex Qty = new Regex(@"\s*(?:[\(\[]\s*)?[x×]\s*(\d{1,3})\s*(?:[\)\]])?\s*$|^\s*(\d{1,3})\s*[x×]\s+", RegexOptions.IgnoreCase);
-        static readonly Regex SlotPrefix = new Regex(@"^(head|helm|chest|body|arms|hands|gauntlets|legs|greaves)\s*:\s*", RegexOptions.IgnoreCase);
+        static readonly Regex AshParen = new Regex(@"\s*[\(\[]\s*(?:ash of war|ash|aow|skill)\s*:\s*([^\)\]]+)[\)\]]\s*", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        static readonly Regex AshPipe = new Regex(@"\s*\|\s*(?:ash of war\s*:\s*)?(.+)$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        static readonly Regex Qty = new Regex(@"\s*(?:[\(\[]\s*)?[x×]\s*(\d{1,3})\s*(?:[\)\]])?\s*$|^\s*(\d{1,3})\s*[x×]\s+", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        static readonly Regex SlotPrefix = new Regex(@"^(head|helm|chest|body|arms|hands|gauntlets|legs|greaves)\s*:\s*", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
         public static ParsedItem Parse(string raw, string category)
         {
@@ -279,13 +279,13 @@ namespace ERBS
                 if (um.Success) { p.Upgrade = int.Parse(um.Groups[1].Value); s = s.Substring(0, um.Index).Trim(); }
             }
             // "Claymore (Heavy)" / "Claymore [Heavy]" -> "Heavy Claymore"
-            var aff = Regex.Match(s, @"^(.*?)\s*[\(\[]\s*(" + string.Join("|", Text.Affinities.Select(Regex.Escape)) + @")(?:\s+affinity)?\s*[\)\]]\s*$", RegexOptions.IgnoreCase);
+            var aff = Regex.Match(s, @"^(.*?)\s*[\(\[]\s*(" + string.Join("|", Text.Affinities.Select(Regex.Escape)) + @")(?:\s+affinity)?\s*[\)\]]\s*$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
             if (aff.Success)
             {
                 p.Affinity = Text.Affinities.First(a => string.Equals(a, aff.Groups[2].Value, StringComparison.OrdinalIgnoreCase));
                 s = aff.Groups[1].Value.Trim();
             }
-            p.LooksLikeNote = s.Length > 64 || Regex.IsMatch(s, @"\s/\s|\b(situational|optional|alternatively|recommended|e\.g\.|such as)\b", RegexOptions.IgnoreCase);
+            p.LooksLikeNote = s.Length > 64 || Regex.IsMatch(s, @"\s/\s|\b(situational|optional|alternatively|recommended|e\.g\.|such as)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
             p.Name = s;
             return p;
         }
@@ -293,7 +293,7 @@ namespace ERBS
         // "Wondrous Physick: A + B" -> [A, B]; otherwise empty.
         public static string[] SplitPhysick(string name)
         {
-            var m = Regex.Match(name ?? "", @"^\s*(?:flask of\s+)?wondrous physick\s*[:\-]\s*(.+?)\s*(?:\+|&|,|\band\b)\s*(.+?)\s*$", RegexOptions.IgnoreCase);
+            var m = Regex.Match(name ?? "", @"^\s*(?:flask of\s+)?wondrous physick\s*[:\-]\s*(.+?)\s*(?:\+|&|,|\band\b)\s*(.+?)\s*$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
             return m.Success ? new[] { m.Groups[1].Value.Trim(), m.Groups[2].Value.Trim() } : new string[0];
         }
     }

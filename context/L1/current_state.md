@@ -10,7 +10,7 @@
 
 - Resolver (`app/lib/Resolver.cs` + `app/BuildModel.ps1`): normalised/alias/plural/fuzzy matching, item-string parsing, duplicate-name policy (lowest ID + note), category correction, unique-weapon built-in skills, Wondrous Physick splitting, note-like rows ignored. On the 7 local presets: 11 unresolved rows before, 1 after (an item that does not exist in the game).
 - Plan schema 3.0: `notes`, `match`, `suggestions`, `rowIndex`, and an auto-assigned `loadout` (R1-3, L1-3, ammo, armor, Talisman1-4, Spell1-14). Preset schema 3.0 (`preset.schema.json`) adds optional `slot` / `affinity`.
-- UI (`app/BuildStudio.ps1` + `app/ui/MainWindow.xaml`): preset library, clipboard JSON import, attribute steppers + rune level, equipment slot board, live fuzzy picker filtered per slot, resolution panel with one-click fixes, connection chip, autosave, auto-apply toggle. Verified by `-CheckOnly` and by screenshots of the running window; no full interactive GUI test suite.
+- UI (`app/BuildStudio.ps1` + `app/ui/MainWindow.xaml`): preset library, one-click Gemini prompt + automatic clipboard import of the line format or JSON (`app/BuildText.ps1`, tested by `test_build_text.ps1`), attribute steppers + rune level, equipment slot board, live fuzzy picker filtered per slot, resolution panel with one-click fixes, connection chip, autosave, auto-apply toggle. Verified by `-CheckOnly` and by screenshots of the running window; no full interactive GUI test suite.
 - Live game (from 2026-09-07/11 evidence, previous agents): stat writes with readback and item grants with inventory readback worked on game 2.2.0.0 via the (now removed) CE bridge; the new direct backend reuses the same game routine and offsets.
 
 ## Implemented, NOT yet verified in a live game

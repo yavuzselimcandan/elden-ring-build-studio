@@ -39,3 +39,20 @@ Rules:
 After producing the preset, state which names you could not confirm in the catalog.
 
 Status of game application (be honest): stats and item grants have been verified live in the offline game with readback; equipping into slots and Ash of War attachment are only planned by the app until the equip adapter is verified in a live session. Never claim items were equipped or applied without the app's receipt.
+
+## Line format (preferred for chat answers, e.g. YouTube "Ask" / Gemini)
+
+The app's **Gemini prompt** button copies a ~500-character prompt that makes the model answer in this format. Build Studio imports it automatically when the user copies the answer and returns to the window (also **Paste build** or Ctrl+V):
+
+```
+BUILD: Lifesteal Facetank
+STATS: VIG 60, MIND 20, END 30, STR 50, DEX 15, INT 9, FAI 40, ARC 10
+R1: Godslayer's Greatsword +10 | Ash: ?
+L1: Brass Shield +25 | Ash: Barricade Shield
+HEAD: Beast Champion Helm
+TALISMAN: Crimson Amber Medallion +3, Shard of Alexander
+SPELL: Golden Vow
+ITEM: Rowa Raisin x5
+```
+
+Keys: BUILD, STATS, R1-R3, L1-L3, HEAD, CHEST, ARMS, LEGS, TALISMAN, SPELL, ITEM (also ARROW/BOLT). Markdown bullets/bold and surrounding chatter are ignored; `?`/unknown values are skipped.
