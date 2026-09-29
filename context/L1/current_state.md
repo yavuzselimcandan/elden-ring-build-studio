@@ -6,10 +6,6 @@
 - The app writes its location to `%LOCALAPPDATA%/EldenRingBuildStudio/root.txt`; the CE autorun (`app/BuildStudioAutorun.lua`) reads it. Until `tools/Install.ps1` is run once with admin approval, the *installed* autorun in `C:/Program Files/Cheat Engine/autorun/zz_EldenRingBuildStudio.lua` is the old copy that hard-codes the retired Documents/Codex path, so live apply from the new location will not be picked up.
 - Retired, left untouched: `Documents/Codex/2026-09-06/.../build_configurator` (canonical until 2026-09-11, holds historical `runtime/` evidence) and `Desktop/Elden Ring Build Configurator` (older copy). Presets were copied from both into `app/configs` (git-ignored) without overwriting.
 
-## Visual assets
-
-- Generated icon source: `app/assets/icon-source.png`. The built-in image generator emitted 1254x1254 pixels; the requested exact 1024x1024 dimensions remain unmet. The icon is not wired into packaging or the desktop shortcut.
-
 ## Working / verified
 
 - Resolver (`app/lib/Resolver.cs` + `app/BuildModel.ps1`): normalised/alias/plural/fuzzy matching, item-string parsing, duplicate-name policy (lowest ID + note), category correction, unique-weapon built-in skills, Wondrous Physick splitting, note-like rows ignored. On the 7 local presets: 11 unresolved rows before, 1 after (an item that does not exist in the game).
