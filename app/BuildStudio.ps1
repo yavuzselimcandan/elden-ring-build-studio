@@ -10,6 +10,12 @@ $index = Get-CatalogIndex $catalog
 $dir = Join-Path $root 'configs'
 New-Item -ItemType Directory -Force -Path $dir, (Join-Path $root 'runtime') | Out-Null
 $settingsPath = Join-Path $root 'runtime\studio-settings.json'
+# Tell the Cheat Engine autorun where this copy of the app lives (see BuildStudioAutorun.lua).
+try {
+    $rootDir = Join-Path $env:LOCALAPPDATA 'EldenRingBuildStudio'
+    New-Item -ItemType Directory -Force -Path $rootDir | Out-Null
+    [IO.File]::WriteAllText((Join-Path $rootDir 'root.txt'), ($root -replace '\\', '/'), (New-Object Text.UTF8Encoding $false))
+} catch { }
 
 $w = [Windows.Markup.XamlReader]::Load((New-Object System.Xml.XmlNodeReader ([xml](Get-Content -LiteralPath (Join-Path $root 'ui\MainWindow.xaml') -Raw -Encoding UTF8))))
 $ui = @{}

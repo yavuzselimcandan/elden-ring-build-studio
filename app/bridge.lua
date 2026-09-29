@@ -94,7 +94,7 @@ local ok, err = pcall(function()
     ensureInventory(pid)
     assert(_inventoryLastPid and getProcessIDFromProcessName('eldenring.exe') == _inventoryLastPid, 'fresh inventory capture required')
     assert(_inventoryLastRdi and _inventoryLastBase and readQword(_inventoryLastRdi + 0x38) == _inventoryLastBase, 'inventory pointer changed')
-    local equip=assert(loadfile(root..'/runtime/equip_probe.lua'))();local count=readInteger(_inventoryLastBase-8);assert(count and count>=0 and count<=2688,'inventory capacity invalid');local result=equip.capture(gd,_inventoryLastBase,count,root..'/runtime/equip-probe.txt');put('result.txt','requestId='..requestId..'\nOK: equip-probe-read-only; matches='..result.matches);return
+    local equip=assert(loadfile(root..'/equip_probe.lua'))();local count=readInteger(_inventoryLastBase-8);assert(count and count>=0 and count<=2688,'inventory capacity invalid');local result=equip.capture(gd,_inventoryLastBase,count,root..'/runtime/equip-probe.txt');put('result.txt','requestId='..requestId..'\nOK: equip-probe-read-only; matches='..result.matches);return
   end
   if mode == 'equip_head_trial' then
     ensureInventory(pid)

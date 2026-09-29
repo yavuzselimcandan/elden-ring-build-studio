@@ -1,5 +1,16 @@
 -- Opt-in bootstrap and persistent request listener. Ordinary CE launches do nothing.
-local root = 'C:/Users/YAVUZ-PC/Documents/Codex/2026-09-06/referenced-chatgpt-conversation-this-is-an/build_configurator'
+-- The Studio records its location in %LOCALAPPDATA%, so moving the app never requires re-installing this file.
+local function readRoot()
+  local base = os.getenv('LOCALAPPDATA')
+  local f = base and io.open(base .. '/EldenRingBuildStudio/root.txt', 'r')
+  if not f then return nil end
+  local v = f:read('*l'); f:close()
+  if not v or v == '' then return nil end
+  v = v:gsub('\\', '/'):gsub('%s+$', '')
+  return v
+end
+local root = readRoot()
+if not root then return end
 local lastRequest = ''
 local function text(path)
   local f = io.open(path, 'r'); if not f then return nil end
