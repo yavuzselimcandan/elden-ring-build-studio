@@ -9,3 +9,4 @@
 4. Ash of War attachment: requires the game's gem-mount routine; the Ash conversion table in `item_adapter.lua` is groundwork only.
 5. Upgrade limits: somber weapons cap at +10; derive from catalog (no affinity variants and not staff/seal) or a small table, warn in the resolver.
 6. Remove machine-specific paths from `test_full_plan.ps1` / `test_ash_mapping.ps1` (skip when files are absent).
+7. Icon export: `app/assets/icon-source.png` is 1254x1254 from the built-in image generator; exact 1024x1024 output remains outstanding. Find an image-generation/export path that supports native 1024x1024 output before wiring it into packaging or the shortcut.

@@ -2,9 +2,13 @@
 
 ## Where the app lives
 
-- **The git checkout is the installed app**: `C:/Users/YAVUZ-PC/Documents/GitHub/elden-ring-build-studio/app`. The Desktop shortcut `Elden Ring Build Configurator.lnk` runs `app/BuildStudio.ps1` (re-targeted by `tools/Install.ps1`).
+- **The git checkout is the installed app**: `C:/Users/YAVUZ-PC/Documents/GitHub/elden-ring-build-studio/app`. The Desktop shortcut `Elden Ring Build Studio.lnk` (custom icon `app/assets/BuildStudio.ico`) runs `app/Launch.vbs` → `app/BuildStudio.ps1` without a console window; created by `tools/Install.ps1`, which also removed the old `Elden Ring Build Configurator.lnk`.
 - The app writes its location to `%LOCALAPPDATA%/EldenRingBuildStudio/root.txt`; the CE autorun (`app/BuildStudioAutorun.lua`) reads it. Until `tools/Install.ps1` is run once with admin approval, the *installed* autorun in `C:/Program Files/Cheat Engine/autorun/zz_EldenRingBuildStudio.lua` is the old copy that hard-codes the retired Documents/Codex path, so live apply from the new location will not be picked up.
 - Retired, left untouched: `Documents/Codex/2026-09-06/.../build_configurator` (canonical until 2026-09-11, holds historical `runtime/` evidence) and `Desktop/Elden Ring Build Configurator` (older copy). Presets were copied from both into `app/configs` (git-ignored) without overwriting.
+
+## Visual assets
+
+- Generated icon source: `app/assets/icon-source.png`. The built-in image generator emitted 1254x1254 pixels; the requested exact 1024x1024 dimensions remain unmet. The icon is not wired into packaging or the desktop shortcut.
 
 ## Working / verified
 
