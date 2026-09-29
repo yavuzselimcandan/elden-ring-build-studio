@@ -10,7 +10,7 @@ end
 
 local function parse_request()
   local f = assert(io.open(root .. '/runtime/request.txt', 'r'))
-  local version, mode, requestId, targetId, items, stats = false, 'probe', nil, nil, {}, {}
+  local version, mode, requestId, targetId, items, stats, equips = false, 'probe', nil, nil, {}, {}, {}
   for line in f:lines() do
     local key, value = line:match('^(%w+)=(.*)$')
     if key == 'version' then
@@ -26,6 +26,11 @@ local function parse_request()
       assert(category and id and upgrade and quantity, 'invalid item request')
       assert(category == 'weapon' or category == 'armor' or category == 'talisman' or category == 'goods' or category == 'ash', 'unsupported item category')
       items[#items + 1] = { category = category, id = tonumber(id), upgrade = tonumber(upgrade), quantity = tonumber(quantity) }
+    elseif key == 'equip' then
+      local slot, category, id, upgrade = value:match('^(%w+)|(%a+)|(%d+)|(%d+)$')
+      assert(slot and category and id and upgrade, 'invalid equip request')
+      assert(category == 'weapon' or category == 'armor' or category == 'talisman', 'unsupported equip category')
+      equips[#equips + 1] = { slot = slot, category = category, id = tonumber(id), upgrade = tonumber(upgrade) }
     elseif key == 'stat' then
       local name, number = value:match('^(%a+)|(%d+)$')
       assert(name and number and ({vig=true,mind=true,['end']=true,str=true,dex=true,['int']=true,fai=true,arc=true})[name], 'invalid stat request')
@@ -38,7 +43,7 @@ local function parse_request()
   assert(version, 'unsupported request version')
   assert(requestId and requestId:match('^%w+$'), 'missing request id')
   assert(mode == 'probe' or mode == 'stats' or mode == 'build' or mode == 'inventory_probe' or mode == 'inventory_read' or mode == 'equip_probe' or mode == 'equip_head_trial' or mode == 'equip_head_restore' or mode == 'armor_test' or mode == 'spell_test', 'unsupported request mode')
-  return requestId, mode, items, stats, targetId
+  return requestId, mode, items, stats, targetId, equips
 end
 
 local function scan(pattern)
@@ -69,7 +74,7 @@ local requestText = io.open(root .. '/runtime/request.txt', 'r')
 local requestId = requestText and requestText:read('*a'):match('requestId=([%w]+)') or 'unknown'
 if requestText then requestText:close() end
 local ok, err = pcall(function()
-  local parsedRequestId, mode, items, stats, targetId = parse_request()
+  local parsedRequestId, mode, items, stats, targetId, equips = parse_request()
   requestId = parsedRequestId
   assert(not getProcessIDFromProcessName('EasyAntiCheat_EOS.exe'), 'EAC running: offline session required')
   local pid = getProcessIDFromProcessName('eldenring.exe')
@@ -155,8 +160,29 @@ local ok, err = pcall(function()
       else ledger.items[#ledger.items+1]={itemId=item.id,category=item.category,requested=item.quantity,applied=0,existing=preview.existing,verified=true} end
     end
     local statsVerified=true;if next(stats) then local oldStats={};for i,name in ipairs(names)do oldStats[name]=readInteger(player+offsets[i]) end;assert(getProcessIDFromProcessName('eldenring.exe')==pid and readQword(manager+8)==player,'character changed before stats');for name,value in pairs(stats)do local index=({vig=1,mind=2,['end']=3,str=4,dex=5,['int']=6,fai=7,arc=8})[name];assert(index and writeInteger(player+offsets[index],value),'stat write failed')end;for i,name in ipairs(names)do assert(readInteger(player+offsets[i])==(stats[name] or oldStats[name]),'stat readback mismatch')end;assert(readInteger(player+0x68)==oldLevel,'level changed unexpectedly')end
-    put('build-ledger-'..requestId..'.txt','requestId='..requestId..'\nstatus=verified\n'..table.concat((function()local x={};for _,v in ipairs(ledger.items)do x[#x+1]=string.format('item=%s,%s,requested=%d,applied=%d,existing=%d,verified=%s',v.category,v.itemId,v.requested,v.applied,v.existing,tostring(v.verified))end;return x end)(), '\n'))
-    put('result.txt','requestId='..requestId..'\nOK: APPLIED build-verified; stats-verified='..tostring(statsVerified));return
+    -- Equip owned items into slots, only after the slot layout is proven consistent with live inventory data.
+    local equipLines, equipSummary = {}, nil
+    if #equips > 0 then
+      assert(readQword(_inventoryLastRdi+0x38)==_inventoryLastBase,'inventory pointer changed before equip')
+      assert(getProcessIDFromProcessName('eldenring.exe')==pid and readQword(manager+8)==player,'character changed before equip')
+      local adapter=assert(loadfile(root..'/equip_adapter.lua'))()
+      local invCount=readInteger(_inventoryLastBase-8);assert(invCount and invCount>=0 and invCount<=2688,'inventory capacity invalid')
+      local layout,report=adapter.calibrate(player,_inventoryLastBase,invCount)
+      put('equip-calibration.txt','requestId='..requestId..'\npid='..pid..'\n'..table.concat(report,'\n')..'\nresult='..(layout and string.format('verified idBase=0x%X handleBase=0x%X talisman=%s evidence=%d',layout.idBase,layout.handleBase,layout.talismanFormat,layout.evidence) or 'unverified'))
+      if not layout then
+        equipSummary='equip-skipped=layout-unverified'
+      else
+        local done,skipped=0,{}
+        for _,r in ipairs(adapter.equip(player,_inventoryLastBase,invCount,layout,equips)) do
+          equipLines[#equipLines+1]=string.format('equip=%s,%d,%s',r.slot,r.id,r.status)
+          if r.status=='equipped' or r.status=='already-equipped' then done=done+1 else skipped[#skipped+1]=r.slot..':'..r.status end
+        end
+        equipSummary=string.format('equipped=%d/%d',done,#equips)..(#skipped>0 and ('; equip-skipped='..table.concat(skipped,',')) or '')
+      end
+    end
+    put('build-ledger-'..requestId..'.txt','requestId='..requestId..'\nstatus=verified\n'..table.concat((function()local x={};for _,v in ipairs(ledger.items)do x[#x+1]=string.format('item=%s,%s,requested=%d,applied=%d,existing=%d,verified=%s',v.category,v.itemId,v.requested,v.applied,v.existing,tostring(v.verified))end;for _,l in ipairs(equipLines)do x[#x+1]=l end;return x end)(), '\n'))
+    local equipComplete = equipSummary == nil or not equipSummary:find('skipped')
+    put('result.txt','requestId='..requestId..'\n'..(equipComplete and 'OK: APPLIED' or 'PARTIAL:')..' build-verified; stats-verified='..tostring(statsVerified)..(equipSummary and ('; '..equipSummary) or ''));return
   end
   if mode == 'armor_test' or mode == 'spell_test' then
     assert(_inventoryLastPid and getProcessIDFromProcessName('eldenring.exe') == _inventoryLastPid, 'inventory capture PID changed')

@@ -38,6 +38,8 @@ function Invoke-BuildPlan {
     $backup=Backup-ActiveBuildSave $Root
     Remove-Item (Join-Path $dir 'result.txt') -Force -ErrorAction SilentlyContinue
     $requestId=[guid]::NewGuid().ToString('N');$mode=if($requestItems.Count){'build'}else{'stats'};$lines=@('version=1',("mode=$mode"),("requestId=$requestId"))+@($requestItems|ForEach-Object{'item={0}|{1}|{2}|{3}' -f $_.category,$_.itemId,$_.upgrade,$_.quantity})+@($attrs.Keys|ForEach-Object{'stat={0}|{1}' -f $_,$attrs[$_]})
+    # Slot placement for granted gear. Memory (spell) slots are not calibrated yet and stay planned only.
+    if($mode -eq 'build' -and $Plan.loadout){foreach($p in $Plan.loadout.psobject.Properties){if($p.Name -notlike 'Spell*' -and $p.Value.category -in @('weapon','armor','talisman')){$lines+=('equip={0}|{1}|{2}|{3}' -f $p.Name,$p.Value.category,$p.Value.itemId,[int]$p.Value.upgrade)}}}
     Set-Content (Join-Path $dir 'request.txt') $lines -Encoding ASCII;Set-Content (Join-Path $dir 'boot.flag') ([int64]([DateTimeOffset]::UtcNow.ToUnixTimeSeconds())) -Encoding ASCII
     [pscustomobject]@{ok=$false;applied=$false;pending=$true;requestId=$requestId;message='Build sent to the game; waiting for verified readback';pendingItems=$pendingItems;backup=$backup}
 }
