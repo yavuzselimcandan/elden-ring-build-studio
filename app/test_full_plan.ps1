@@ -13,5 +13,5 @@ foreach($category in 'weapon','armor','talisman','goods'){if(@($plan.items|Where
 $outgoing = [pscustomobject]@{schemaVersion=$plan.schemaVersion;name=$plan.name;attributes=$build.attributes;items=@($plan.items);issues=@($plan.issues)}
 $json = $outgoing | ConvertTo-Json -Depth 12
 if(@($outgoing.items).Count -lt 10 -or $json -notmatch '"attributes"' -or $json -notmatch '"Magic Claymore"'){throw 'full outgoing plan was not serialized'}
-if(@($plan.issues | Where-Object {$_ -match 'Godrick''s Great Rune'}).Count -eq 0){throw 'Godrick rune ambiguity warning was lost'}
+$rune=@($plan.items | Where-Object name -eq 'Godrick''s Great Rune'); if($rune.Count -ne 1 -or $rune[0].itemId -ne 191 -or @($plan.notes | Where-Object {$_ -match 'Godrick''s Great Rune'}).Count -eq 0){throw 'Godrick rune should resolve to primary ID 191 with a note'}
 'Full plan integration check passed.'
