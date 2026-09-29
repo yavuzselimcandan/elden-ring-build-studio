@@ -1,15 +1,47 @@
 # Workflows
 
-## Routine user flow (target)
+## User flow
 
-User sends link in ordinary chat. Skill reads source and local schema/catalog, produces a filled preset. User imports it into native app, edits ordinary controls, and application happens automatically in the offline game. CE remains a background implementation detail. Do not promise ordinary chat can access every video or avoids all platform usage limits.
+1. YouTube video → **Gemini prompt** button in Build Studio → paste into YouTube "✦ Ask" → copy the answer.
+2. Switch back to Build Studio: the build is imported automatically (or **Paste build** / Ctrl+V), saved to `app/configs`.
+3. Fix red (unresolved) rows with the suggestion buttons on the right; adjust stats/slots.
+4. Start the game offline, load the character. Click the chip "Click to connect as admin" if the game runs elevated.
+5. **Apply to game** (or enable Auto-apply). The status bar shows the receipt; hover it for the full ledger.
 
-## Current developer flow
+## Developer flow
 
-Run Windows PowerShell in STA with `app/BuildStudio.ps1 -CheckOnly` to validate construction. Start without CheckOnly for the visible UI. Do not confuse construction with full GUI testing. `BuildModel.ps1` can be dot-sourced and tested with synthetic presets.
+- Tests (no game needed): `cd app; foreach ($t in Get-ChildItem test_*.ps1) { powershell -NoProfile -ExecutionPolicy Bypass -File $t }`
+  plus `powershell -NoProfile -ExecutionPolicy Bypass -STA -File BuildStudio.ps1 -CheckOnly`. All must pass before a commit.
+- Scripts consumed by Windows PowerShell 5.1 that contain non-ASCII characters need a UTF-8 BOM.
+- UI screenshots without a person: launch with `Start-Process` (quote the `-Preset` path), `PrintWindow` the window from a
+  DPI-aware process. Keys sent with SendKeys go wherever focus is — prefer testing logic directly.
 
-Copy only selected source files to desktop installation after verifying them. Preserve `configs/`, `.previous` files and user changes. Existing shortcut references EldenRingBuildConfigurator.ps1, which forwards to BuildStudio.ps1.
+## Live testing (game running)
 
-## Handoff flow
+Because the game runs elevated, helpers must too. Pattern (one UAC prompt on the user's screen):
 
-Read L0 and L1; inspect only relevant code. State the bounded work item. Execute tests that show outcomes, then record exact evidence in L3 session notes and update L1. Commit source/context only; keep local downloaded CT, saves and game assets outside Git. Publisher uses private GitHub repo and never force pushes.
+```powershell
+$out = "$env:TEMP\erbs-out.txt"
+$cmd = "& 'C:\...\tools\Probe-Game.ps1' *>&1 | Out-File -Encoding utf8 -Width 250 '$out'"
+Start-Process powershell.exe -Verb RunAs -Wait -WindowStyle Hidden -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-Command',$cmd
+Get-Content $out
+```
+
+- `tools/Probe-Game.ps1` — read-only: attach, stats, inventory discovery, equip calibration, signatures. Run this first on any new game version.
+- `tools/Apply-Preset.ps1 -Preset <json>` — same code path as the Apply button, prints the ledger.
+- `tools/Test-LiveApply.ps1` — small reversible grant/equip test (legacy raw equip path; prefer Apply-Preset now).
+- Add a `trap { ... }` to ad-hoc elevated scripts: otherwise terminating errors vanish from the redirected output.
+- Tell the user before any write; every apply backs up the save first. Ask the user to confirm visible in-game results —
+  memory read-back is not proof the menu/model updated (see game-internals.md).
+
+## Version control (user requirement: strict)
+
+- Work on a feature branch, small commits with explanatory messages ending in the Co-Authored-By trailer, push often,
+  PR into `main`. Never force-push. Never commit `app/configs`, `app/runtime`, CT files, saves or binaries.
+- After each session append `context/L3/sessions/<date>-<topic>.md`, update L1 (`current_state.md`, `next_steps.md`) and
+  L2 decisions when needed.
+
+## Delegation
+
+Simple, well-specified tasks may go to Codex **gpt-6-luna with reasoning max only** (never astra/sol). Close stdin
+(`</dev/null`), give an explicit OWNS list, run `git status` afterwards and revert anything outside it; lanes never commit.

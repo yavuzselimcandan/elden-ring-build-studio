@@ -1,12 +1,15 @@
 # Goals
 
-The user wants to play Elden Ring builds without manually collecting equipment or manipulating Cheat Engine.
+The user wants to play Elden Ring builds from videos without collecting gear by hand or touching cheat tools.
 
-1. Send a social/video build link in ordinary chat. A reusable skill/plugin guides the AI to inspect source material and return a concrete JSON preset. Do not require a Codex coding session for routine imports. Do not claim that a plugin removes normal chat usage limits or grants video access.
-2. Open a separate native Windows app via a desktop shortcut. Create a new preset or open an existing one; edit equipment and attributes through normal controls.
-3. Automatically resolve and apply changes to the chosen offline Elden Ring session. Discover the game automatically; CE should operate in the background without user-facing CE windows.
-4. Preserve saves, avoid repeated item grants, show real application errors and verify successful changes from the game.
+1. Find a build video on YouTube, ask YouTube's Gemini ("✦ Ask") with the prompt copied from the app, copy the answer.
+   Other chats (ChatGPT/Claude with the `skills/elden-ring-build-config` skill) may produce preset JSON instead.
+2. Build Studio (native Windows window, desktop shortcut) imports the copied text automatically, resolves every item name
+   against the catalog, and lets the user fix unmatched names and edit stats/slots with normal controls.
+3. One click (or auto-apply) applies the build to the running **offline** game: stats, missing items, equipment in the
+   right slots, spells in memory slots — with no Cheat Engine and no manual steps beyond a UAC prompt when the game runs elevated.
+4. Never damage the save: back up before every apply, read back every change, report failures honestly, never duplicate items.
 
-Black neumorphism/charcoal with restrained gold was requested. The current WPF grid is an interim implementation, not polished final UX.
+Style: dark charcoal with restrained gold, serif headings. UI language: English (game item names are English); the user speaks Turkish.
 
-Completion requires a demonstrated end-to-end preset -> resolved IDs -> compatible backend -> intended inventory/stat state. Current code stops after ID resolution.
+Remaining gaps to the full goal: [next_steps.md](next_steps.md) (Ash of War attachment first).

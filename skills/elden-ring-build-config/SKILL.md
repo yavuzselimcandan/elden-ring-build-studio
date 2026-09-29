@@ -11,7 +11,7 @@ App (single installed copy, a git checkout): `C:/Users/YAVUZ-PC/Documents/GitHub
 Resolve names against `app/catalog.json` (Hexinton v8.0.1 table names/IDs). Never invent IDs — the app resolves names itself and tolerates case, apostrophes, diacritics, plurals and small typos, and offers "did you mean" fixes; still prefer the exact catalog spelling.
 
 Delivery (either works):
-1. **Chat-only:** return the JSON in a ```json block. The user copies it and presses **Paste JSON** in the app.
+1. **Chat-only:** return the JSON in a ```json block. The user copies it; Build Studio imports it automatically when its window is activated (or via **Paste build** / Ctrl+V). For YouTube's Gemini, prefer the line format below.
 2. **Local session:** write UTF-8 JSON to `app/configs/<build-name>.json`. Never overwrite an existing preset; pick a new name.
 
 Contract (`app/preset.schema.json`, schemaVersion 3.0):
