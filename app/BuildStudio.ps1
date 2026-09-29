@@ -117,7 +117,7 @@ function Save-Current {
 }
 
 function Save-Settings {
-    try { [pscustomobject]@{ lastPreset = $State.path; autoApply = [bool]$ui.AutoApply.IsChecked; lastClipboardHash = $State.lastClipboardHash } | ConvertTo-Json | Set-Content -LiteralPath $settingsPath -Encoding UTF8 } catch { }
+    try { [pscustomobject]@{ lastPreset = $State.path; autoApply = [bool]$ui.AutoApply.IsChecked; lastClipboardHash = $State.lastClipboardHash; lastClipboardPath = $State.lastClipboardPath } | ConvertTo-Json | Set-Content -LiteralPath $settingsPath -Encoding UTF8 } catch { }
 }
 
 function Set-Dirty {
@@ -446,7 +446,15 @@ function Import-FromClipboard([switch]$Quiet) {
     try { $text = [Windows.Clipboard]::GetText() } catch { return }
     if (-not (Test-BuildText $text)) { if (-not $Quiet) { Set-Status 'Clipboard has no build. Copy the chat answer (BUILD: … lines or preset JSON) first.' }; return }
     $hash = Get-TextHash $text
-    if ($Quiet -and $hash -eq $State.lastClipboardHash) { return }
+    if ($hash -eq $State.lastClipboardHash) {
+        # Already imported (e.g. automatically when the window was activated): show that preset instead of duplicating it.
+        if ($Quiet) { return }
+        if ($State.lastClipboardPath -and (Test-Path -LiteralPath $State.lastClipboardPath)) {
+            if ($State.path -ne $State.lastClipboardPath) { Open-Preset $State.lastClipboardPath; Update-PresetList $State.path }
+            Set-Status "This build was already imported as '$($State.name)'."
+            return
+        }
+    }
     $State.lastClipboardHash = $hash; Save-Settings
     $b = ConvertFrom-BuildText $text
     if (-not $b) { Set-Status 'Could not read a build from the clipboard text.'; return }
@@ -454,6 +462,7 @@ function Import-FromClipboard([switch]$Quiet) {
     Import-BuildObject $b $null
     [void](Save-Current)
     $ui.SourceText.Text = "Imported from clipboard · " + [IO.Path]::GetFileName($State.path)
+    $State.lastClipboardPath = $State.path; Save-Settings
     $ok = @($State.plan.items | Where-Object { -not $_.unresolved }).Count
     Set-Status "Imported '$($State.name)' from clipboard — $ok of $(@($State.plan.items).Count) items matched$(if ($ok -lt @($State.plan.items).Count) { '; fix the red ones on the right' })."
 }
@@ -487,6 +496,7 @@ $w.Add_Closed({ $saveTimer.Stop(); $pollTimer.Stop(); if ($State.dirty) { try { 
 $settings = $null; try { if (Test-Path $settingsPath) { $settings = Get-Content -LiteralPath $settingsPath -Raw | ConvertFrom-Json } } catch { }
 $ui.AutoApply.IsChecked = [bool]$settings.autoApply
 $State.lastClipboardHash = [string]$settings.lastClipboardHash
+$State.lastClipboardPath = [string]$settings.lastClipboardPath
 Update-PresetList $null
 $startPath = if ($Preset) { $Preset } elseif ($settings.lastPreset -and (Test-Path -LiteralPath $settings.lastPreset)) { $settings.lastPreset } else { $null }
 if ($startPath) { Open-Preset $startPath; Update-PresetList $startPath } else { Import-BuildObject ([pscustomobject]@{ name = 'New build'; items = @(); attributes = @{} }) $null }

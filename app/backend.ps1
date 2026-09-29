@@ -95,7 +95,10 @@ function Invoke-BuildPlan {
         $want = @{}
         foreach ($it in $items) {
             $raw = [ERBS.Categories]::Raw([string]$it.category, [int]$it.itemId, [int]$it.upgrade)
-            if ($want.ContainsKey($raw)) { $want[$raw].qty += [int]$it.quantity } else { $want[$raw] = @{ qty = [int]$it.quantity; name = $it.name } }
+            # Flasks are single items; their charges are not an inventory quantity, so one copy is all that can be granted.
+            $isFlask = $it.category -eq 'goods' -and (([int]$it.itemId -ge 1000 -and [int]$it.itemId -lt 1100) -or [int]$it.itemId -in 250, 251)
+            $qty = if ($isFlask) { 1 } else { [int]$it.quantity }
+            if ($want.ContainsKey($raw)) { if (-not $isFlask) { $want[$raw].qty += $qty } } else { $want[$raw] = @{ qty = $qty; name = $it.name } }
         }
         foreach ($raw in $want.Keys) {
             $rows = [ERBS.Inventory]::Read($session.Mem, $invBase)
@@ -154,8 +157,30 @@ function Invoke-BuildPlan {
             }
         }
     }
-    $spells = @($Plan.loadout.psobject.Properties | Where-Object Name -like 'Spell*').Count
-    if ($spells) { $lines.Add("spells: $spells granted, memorise them at a Site of Grace (slot writing not supported yet)") }
+    # Memory slots: attune the build's spells through the game's own routine and read them back.
+    $spellIds = @($Plan.loadout.psobject.Properties | Where-Object Name -like 'Spell*' | ForEach-Object { [int]$_.Value.itemId })
+    $spellsOk = 0
+    if ($spellIds.Count -and $invBase -ne 0) {
+        $bad = $session.CheckMagicLayout($player)
+        if ($bad) { $problems.Add("spells not memorised: $bad"); $lines.Add("spells skipped: $bad") }
+        else {
+            $count = $session.MagicSlotCount($player)
+            $want = New-Object 'System.Collections.Generic.List[int]'; foreach ($id in $spellIds) { $want.Add($id) }
+            $overflow = New-Object 'System.Collections.Generic.List[int]'
+            $assign = [ERBS.MemorySlots]::Plan($session.ReadMagicSlots($player), $count, $want, $overflow)
+            $rows = [ERBS.Inventory]::Read($session.Mem, $invBase)
+            foreach ($a in $assign) {
+                $row = $rows | Where-Object { $_.Raw -eq (0x40000000 + $a.Item2) } | Select-Object -First 1
+                if (-not $row) { $problems.Add("spell $($a.Item2) not owned"); continue }
+                $session.AttuneSpell($player, $a.Item1, $row.Index, $a.Item2)
+                $got = $null; for ($t = 0; $t -lt 20; $t++) { $got = $session.ReadMagicSlots($player)[$a.Item1]; if ($got -eq $a.Item2) { break }; Start-Sleep -Milliseconds 100 }
+                if ($got -eq $a.Item2) { $lines.Add("memory slot $($a.Item1 + 1) = $($a.Item2)") } else { $problems.Add("spell $($a.Item2) not memorised (slot $($a.Item1 + 1) reads $got)") }
+            }
+            $now = $session.ReadMagicSlots($player)
+            $spellsOk = @($spellIds | Select-Object -Unique | Where-Object { $now[0..($count - 1)] -contains $_ }).Count
+            if ($overflow.Count) { $problems.Add("$($overflow.Count) spell(s) need more memory slots (have $count; use Memory Stones)") }
+        }
+    }
 
     $ledger = Join-Path $Root ('runtime\ledger-' + (Get-Date -Format yyyyMMdd-HHmmss) + '.txt')
     [IO.File]::WriteAllLines($ledger, $lines)
@@ -163,6 +188,7 @@ function Invoke-BuildPlan {
     if ($stats.Count) { $summary += 'stats set' }
     $summary += "$granted item(s) granted"
     if ($equipTotal) { $summary += "$equipped/$equipTotal slots equipped" }
+    if ($spellIds.Count) { $summary += "$spellsOk/$(@($spellIds | Select-Object -Unique).Count) spells memorised" }
     [pscustomobject]@{
         ok = $true; applied = ($problems.Count -eq 0)
         message = ($summary -join ' · ') + $(if ($problems.Count) { ' · ' + ($problems -join '; ') } else { '' })

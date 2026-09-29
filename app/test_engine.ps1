@@ -84,3 +84,21 @@ $refuse = [Func[int, ERBS.InvRow, bool]] { param($slot, $row) $false }
 $failed = $false; try { [void][ERBS.Equipment]::Apply($m, $PLAYER, $rows, $layout, (ReqList (New-Req 'R3' 'weapon' 1040000 10)), $refuse) } catch { $failed = $true }
 Check (-not $failed) 'not-owned item never reaches the equipper'
 'Equipper checks passed.'
+
+# 7. memory slot planning
+$over = New-Object 'System.Collections.Generic.List[int]'
+$cur = [int[]](6001, 6020, 6110, 6120, 6600, -1, -1, -1, -1, -1, -1, -1, -1, -1)
+$want = New-Object 'System.Collections.Generic.List[int]'; foreach ($x in 6600, 4080, 4120, 6001) { $want.Add($x) }
+$plan = [ERBS.MemorySlots]::Plan($cur, 6, $want, $over)
+Check ($plan.Count -eq 2 -and $plan[0].Item1 -eq 1 -and $plan[0].Item2 -eq 4080 -and $plan[1].Item1 -eq 2 -and $plan[1].Item2 -eq 4120 -and $over.Count -eq 0) "keeps attuned spells, fills non-build slots in order ($($plan | % { "$($_.Item1)=$($_.Item2)" }))"
+$over.Clear(); $big = New-Object 'System.Collections.Generic.List[int]'; foreach ($x in 4001..4008) { $big.Add($x) }
+$plan = [ERBS.MemorySlots]::Plan($cur, 6, $big, $over)
+Check ($plan.Count -eq 6 -and $over.Count -eq 2) 'overflow beyond unlocked memory slots'
+'Memory slot checks passed.'
+
+# 8. an item equipped in a slot that the same apply changes is moved instead of skipped
+$m = New-Character 0x398; $rows = [ERBS.Inventory]::Read($m, $INV); $layout = [ERBS.Equipment]::Calibrate($m, $PLAYER, $rows, $rep)
+# talisman 2160 sits in Talisman1 (idx 17); the build wants it in Talisman2 and something else in Talisman1
+$res = [ERBS.Equipment]::Apply($m, $PLAYER, $rows, $layout, (ReqList (New-Req 'Talisman2' 'talisman' 2160 0) (New-Req 'Talisman1' 'talisman' 1150 0)))
+Check (@($res | Where-Object Status -eq 'equipped').Count -eq 2 -and $m.U($PLAYER + 0x398 + 72) -eq 2160 -and $m.U($PLAYER + 0x398 + 68) -eq 1150) "deferred move ($(@($res | % { "$($_.Slot)=$($_.Status)" }) -join ','))"
+'Deferred equip checks passed.'

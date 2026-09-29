@@ -182,7 +182,12 @@ namespace ERBS
             var written = new List<Tuple<int, uint, uint>>();
             try
             {
-                foreach (var r in requests)
+                // Items equipped in a slot that another request is about to change become free later: retry them.
+                var queue = requests.ToList();
+                for (int pass = 0; pass < 3 && queue.Count > 0; pass++)
+                {
+                var next = new List<EquipRequest>();
+                foreach (var r in queue)
                 {
                     int index; string status;
                     if (!SlotIndex.TryGetValue(r.Slot, out index)) status = "unsupported-slot";
@@ -227,7 +232,10 @@ namespace ERBS
                             }
                         }
                     }
+                    if (status == "already-equipped-elsewhere" && pass < 2) { next.Add(r); continue; }
                     results.Add(new EquipResult { Slot = r.Slot, Id = r.Id, Status = status });
+                }
+                queue = next;
                 }
             }
             catch (Exception ex)
@@ -242,6 +250,27 @@ namespace ERBS
                 throw new InvalidOperationException(ex.Message + "; equipment rolled back", ex);
             }
             return results;
+        }
+    }
+
+    public static class MemorySlots
+    {
+        // Spells already memorised stay where they are; the others go into slots (within the unlocked
+        // count) whose current spell is not part of the build, in slot order. Returns (slot, spellId)
+        // assignments; 'overflow' receives spells that do not fit.
+        public static List<Tuple<int, int>> Plan(int[] current, int count, IList<int> desired, List<int> overflow)
+        {
+            var result = new List<Tuple<int, int>>();
+            var want = desired.Distinct().ToList();
+            var free = new Queue<int>();
+            for (int i = 0; i < Math.Min(count, current.Length); i++) if (!want.Contains(current[i])) free.Enqueue(i);
+            foreach (var id in want)
+            {
+                if (current.Take(count).Contains(id)) continue;
+                if (free.Count == 0) { overflow.Add(id); continue; }
+                result.Add(Tuple.Create(free.Dequeue(), id));
+            }
+            return result;
         }
     }
 
@@ -383,6 +412,52 @@ namespace ERBS
             code.AddRange(new byte[] { 0x48, 0x83, 0xC4, 0x48, 0xC3 });                                                 // add rsp,48 ; ret
             if (!Mem.Write(EquipStub, code.ToArray())) throw new InvalidOperationException("equip stub write failed");
             return Mem.Execute(EquipStub, 0, 5000);
+        }
+
+        // ---- memory (spell) slots through the game's own routine
+        // Source: The Grand Archives CT, ChangeMagic_code.cea: changeMagic(slot, mem) with mem+0x08 slot,
+        // +0x48 row+tail-1, +0x4C goods raw id, +0x50 goods handle. Verified offsets on game 2.2.0.0:
+        // EquipMagicData = [PlayerGameData+0x530] (+0x10 + 8*i: spell id or -1), slot count = [PlayerGameData+0xA74].
+        public const int EquipMagicDataPtrOffset = 0x530, MagicSlotCountOffset = 0xA74;
+        public long ChangeMagicFunc, MagicStub, MagicData;
+
+        public long EquipMagicData(long player) { return Mem.ReadInt64(player + EquipMagicDataPtrOffset); }
+        public int MagicSlotCount(long player) { return Mem.ReadInt32(player + MagicSlotCountOffset); }
+        public int[] ReadMagicSlots(long player)
+        {
+            long emd = EquipMagicData(player); var s = new int[14];
+            for (int i = 0; i < 14; i++) s[i] = Mem.ReadInt32(emd + 0x10 + 8 * i);
+            return s;
+        }
+        static bool IsSpellId(int id) { return (id >= 4000 && id < 8000) || (id >= 2004000 && id < 2008000); }
+
+        // Refuses unless the magic block looks exactly like the verified layout.
+        public string CheckMagicLayout(long player)
+        {
+            int count = MagicSlotCount(player);
+            if (count < 1 || count > 14) return "memory slot count out of range: " + count;
+            foreach (var v in ReadMagicSlots(player)) if (v != -1 && !IsSpellId(v)) return "unexpected value in a memory slot: " + v;
+            return null;
+        }
+
+        public void AttuneSpell(long player, int slot, int row, int spellId)
+        {
+            if (ChangeMagicFunc == 0) ChangeMagicFunc = Mem.ScanUnique("?? 89 5C ?? ?? ?? 89 74 ?? ?? 57 ?? 83 EC ?? ?? 8B C2 8B F9 ?? 8B C8", "change magic routine");
+            if (MagicStub == 0) { long a = Mem.Alloc(0x100); MagicData = a; MagicStub = a + 0x80; }
+            var d = new byte[0x80];
+            BitConverter.GetBytes(slot).CopyTo(d, 0x08);
+            BitConverter.GetBytes(row + TailIndex(player) - 1).CopyTo(d, 0x48);
+            BitConverter.GetBytes(unchecked((int)(0x40000000u + (uint)spellId))).CopyTo(d, 0x4C);
+            BitConverter.GetBytes(unchecked((int)(0xB0000000u + (uint)spellId))).CopyTo(d, 0x50);
+            if (!Mem.Write(MagicData, d)) throw new InvalidOperationException("magic data write failed");
+            var code = new List<byte>();
+            code.AddRange(new byte[] { 0x48, 0x83, 0xEC, 0x28 });                                                  // sub rsp,28
+            code.AddRange(new byte[] { 0x48, 0xB9 }); code.AddRange(BitConverter.GetBytes((long)slot));            // mov rcx,slot
+            code.AddRange(new byte[] { 0x48, 0xBA }); code.AddRange(BitConverter.GetBytes(MagicData));             // mov rdx,&data
+            code.AddRange(new byte[] { 0x48, 0xB8 }); code.AddRange(BitConverter.GetBytes(ChangeMagicFunc));       // mov rax,changeMagic
+            code.AddRange(new byte[] { 0xFF, 0xD0, 0x48, 0x83, 0xC4, 0x28, 0xC3 });                                // call rax ; add rsp,28 ; ret
+            if (!Mem.Write(MagicStub, code.ToArray())) throw new InvalidOperationException("magic stub write failed");
+            Mem.Execute(MagicStub, 0, 5000);
         }
 
         public Func<int, InvRow, bool> GameEquipper(long player)
