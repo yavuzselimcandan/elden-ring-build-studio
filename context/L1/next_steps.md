@@ -1,11 +1,7 @@
 # Next steps
 
-1. **Live check:** start the game offline, load the character, run `tools/Probe-Game.ps1` (read-only) and read its report.
-2. **First live auto-equip session** (offline game, character loaded, recent manual save backup exists anyway):
-   - Apply a small preset (one weapon in R1, one armor piece, one talisman) with the Apply button.
-   - Read `app/runtime/equip-calibration.txt`: it must say `result=verified idBase=0x398` (or explain the mismatch). If unverified, do not loosen the check; inspect the dumped rows.
-   - Confirm in-game whether the equipment menu, character model and stats reflect the change immediately, after opening the equipment menu, or only after a reload. Record the answer in a session note and in `STATUS.md`. If the game does not refresh, investigate the game's own equip routine rather than stacking memory writes.
-3. Memory (spell) slots: calibrate `EquipMagicData` (CT v8: PlayerGameData+0x518 → +0x10 + 8*i) the same way as ChrAsm before enabling `Spell*` equip lines in `backend.ps1`.
-4. Ash of War attachment: requires the game's gem-mount routine; the Ash conversion table in `item_adapter.lua` is groundwork only.
-5. Upgrade limits: somber weapons cap at +10; derive from catalog (no affinity variants and not staff/seal) or a small table, warn in the resolver.
-6. Remove machine-specific paths from `test_full_plan.ps1` / `test_ash_mapping.ps1` (skip when files are absent).
+1. Ash of War attachment to weapons (find the game's gem-mount routine; TGA CT is the first place to look).
+2. Remove invisible item copies left by the pre-fix grant bug (needs the game's own remove-item routine; they are harmless meanwhile, the equip code skips them).
+3. Fuzzy matching: consider auto-accepting near-misses like "Great Oracle Bubble" → "Great Oracular Bubble" (currently offered as a suggestion only).
+4. Upgrade limits (somber weapons +10) and quick items / pouch.
+5. Merge PR #1 (`overhaul/v3`) into `main` once the user is happy.
