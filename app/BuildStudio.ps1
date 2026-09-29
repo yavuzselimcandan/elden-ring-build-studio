@@ -18,6 +18,8 @@ try {
 } catch { }
 
 $w = [Windows.Markup.XamlReader]::Load((New-Object System.Xml.XmlNodeReader ([xml](Get-Content -LiteralPath (Join-Path $root 'ui\MainWindow.xaml') -Raw -Encoding UTF8))))
+$iconPath = Join-Path $root 'assets\BuildStudio.ico'
+if (Test-Path $iconPath) { try { $w.Icon = [Windows.Media.Imaging.BitmapFrame]::Create([Uri]$iconPath) } catch { } }
 $ui = @{}
 foreach ($n in 'PresetFilter','PresetList','NewBtn','PasteBtn','FolderBtn','ConnDot','ConnText','AutoApply','ApplyBtn','BuildName','SourceText','StatusText','LevelText','StatsGrid','EquipPanel','InventoryPanel','PickerTitle','PickerSub','SearchBox','CategoryChips','Results','SelectedName','UpgradeBox','UpgradeInput','QtyInput','AshBox','AshInput','PlaceBtn','ClearSlotBtn','IssuesTitle','IssuesPanel') {
     $ui[$n] = $w.FindName($n)

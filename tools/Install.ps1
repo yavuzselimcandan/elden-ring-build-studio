@@ -26,19 +26,19 @@ foreach ($src in $legacy | Where-Object { Test-Path $_ }) {
 $shell = New-Object -ComObject WScript.Shell
 $desktop = [Environment]::GetFolderPath('Desktop')
 $ps = Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe'
-$icon = @('D:\Games\ELDEN RING\Game\eldenring.exe') | Where-Object { Test-Path $_ } | Select-Object -First 1
-# Re-target the existing shortcut if there is one; otherwise create it.
-$existing = @('Elden Ring Build Configurator.lnk', 'Elden Ring Build Studio.lnk' | ForEach-Object { Join-Path $desktop $_ } | Where-Object { Test-Path $_ })
-foreach ($path in $(if ($existing.Count) { $existing[0] } else { Join-Path $desktop 'Elden Ring Build Studio.lnk' })) {
-    $lnk = $shell.CreateShortcut($path)
-    $lnk.TargetPath = $ps
-    $lnk.Arguments = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -STA -File `"$app\BuildStudio.ps1`""
-    $lnk.WorkingDirectory = $app
-    $lnk.WindowStyle = 7
-    if ($icon) { $lnk.IconLocation = "$icon,0" }
-    $lnk.Save()
-    "Shortcut updated: $path"
-}
+$icon = @((Join-Path $app 'assets\BuildStudio.ico'), 'D:\Games\ELDEN RING\Game\eldenring.exe') | Where-Object { Test-Path $_ } | Select-Object -First 1
+# One shortcut, launched through Launch.vbs so no console window flashes. The older name is replaced.
+$path = Join-Path $desktop 'Elden Ring Build Studio.lnk'
+$lnk = $shell.CreateShortcut($path)
+$lnk.TargetPath = Join-Path $env:WINDIR 'System32\wscript.exe'
+$lnk.Arguments = "`"$app\Launch.vbs`""
+$lnk.WorkingDirectory = $app
+$lnk.Description = 'Elden Ring Build Studio - forge, equip and apply builds'
+if ($icon) { $lnk.IconLocation = "$icon,0" }
+$lnk.Save()
+"Shortcut ready: $path"
+$old = Join-Path $desktop 'Elden Ring Build Configurator.lnk'
+if (Test-Path $old) { Remove-Item -LiteralPath $old; "Replaced old shortcut: $old" }
 
 if (-not $SkipAutorun) {
     $target = Join-Path $CheatEngineDir 'autorun\zz_EldenRingBuildStudio.lua'
