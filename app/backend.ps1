@@ -22,7 +22,7 @@ function Get-BuildBackendStatus {
     param([string]$Root = $PSScriptRoot)
     $game = Get-Process -Name eldenring -ErrorAction SilentlyContinue | Select-Object -First 1
     $eac = [bool](Get-Process -Name EasyAntiCheat_EOS, EasyAntiCheat -ErrorAction SilentlyContinue)
-    $s = [ordered]@{ ready = $false; gameRunning = [bool]$game; eacRunning = $eac; characterLoaded = $false; gameVersion = $null; level = $null; message = '' }
+    $s = [ordered]@{ ready = $false; gameRunning = [bool]$game; eacRunning = $eac; needsElevation = $false; characterLoaded = $false; gameVersion = $null; level = $null; message = '' }
     if (-not $game) { $s.message = 'Game not running'; return [pscustomobject]$s }
     if ($eac) { $s.message = 'Easy Anti-Cheat is running; start the game offline (EAC disabled)'; return [pscustomobject]$s }
     try {
@@ -37,7 +37,12 @@ function Get-BuildBackendStatus {
         $script:GameSessionError = $null
     } catch {
         $script:GameSessionError = $_.Exception.Message
-        $s.message = "Cannot attach: $($_.Exception.Message)"
+        $inner = $_.Exception; while ($inner.InnerException) { $inner = $inner.InnerException }
+        if ($inner -is [System.ComponentModel.Win32Exception] -and $inner.NativeErrorCode -eq 5) {
+            # The game was started as administrator; only an elevated Studio may open it.
+            $s.needsElevation = $true
+            $s.message = 'The game runs as administrator: restart Build Studio as administrator to connect'
+        } else { $s.message = "Cannot attach: $($_.Exception.Message)" }
     }
     [pscustomobject]$s
 }

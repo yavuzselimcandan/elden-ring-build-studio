@@ -15,7 +15,7 @@ $w = [Windows.Markup.XamlReader]::Load((New-Object System.Xml.XmlNodeReader ([xm
 $iconPath = Join-Path $root 'assets\BuildStudio.ico'
 if (Test-Path $iconPath) { try { $w.Icon = [Windows.Media.Imaging.BitmapFrame]::Create([Uri]$iconPath) } catch { } }
 $ui = @{}
-foreach ($n in 'PresetFilter','PresetList','NewBtn','PasteBtn','FolderBtn','ConnDot','ConnText','AutoApply','ApplyBtn','BuildName','SourceText','StatusText','LevelText','StatsGrid','EquipPanel','InventoryPanel','PickerTitle','PickerSub','SearchBox','CategoryChips','Results','SelectedName','UpgradeBox','UpgradeInput','QtyInput','AshBox','AshInput','PlaceBtn','ClearSlotBtn','IssuesTitle','IssuesPanel') {
+foreach ($n in 'PresetFilter','PresetList','NewBtn','PasteBtn','FolderBtn','ConnChip','ConnDot','ConnText','AutoApply','ApplyBtn','BuildName','SourceText','StatusText','LevelText','StatsGrid','EquipPanel','InventoryPanel','PickerTitle','PickerSub','SearchBox','CategoryChips','Results','SelectedName','UpgradeBox','UpgradeInput','QtyInput','AshBox','AshInput','PlaceBtn','ClearSlotBtn','IssuesTitle','IssuesPanel') {
     $ui[$n] = $w.FindName($n)
 }
 
@@ -374,9 +374,20 @@ function Update-Connection {
     if (-not $s -or -not $s.gameRunning) { $ui.ConnDot.Fill = $C.muted; $ui.ConnText.Text = 'Game not running' }
     elseif ($s.eacRunning) { $ui.ConnDot.Fill = $C.err; $ui.ConnText.Text = 'EAC active — start offline' }
     elseif ($s.ready) { $ui.ConnDot.Fill = $C.ok; $ui.ConnText.Text = "Connected · Lv $($s.level)" }
+    elseif ($s.needsElevation) { $ui.ConnDot.Fill = $C.gold; $ui.ConnText.Text = 'Click to connect as admin' }
     elseif ($s.message -like 'Cannot attach*') { $ui.ConnDot.Fill = $C.err; $ui.ConnText.Text = 'Cannot attach' }
     else { $ui.ConnDot.Fill = $C.warn; $ui.ConnText.Text = 'Load your character' }
     $ui.ConnText.ToolTip = if ($s) { "$($s.message)$(if ($s.gameVersion) { "`nGame $($s.gameVersion)" })" } else { $null }
+}
+
+# The game was started as administrator, so only an elevated Studio can open it. Save and reopen elevated.
+function Restart-Elevated {
+    if ($State.dirty) { [void](Save-Current); $State.dirty = $false }
+    Save-Settings
+    $argList = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-STA', '-File', "`"$root\BuildStudio.ps1`"")
+    if ($State.path) { $argList += @('-Preset', "`"$($State.path)`"") }
+    try { Start-Process (Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe') -Verb RunAs -ArgumentList $argList; $w.Close() }
+    catch { Set-Status 'Administrator approval was declined; the game cannot be reached without it.' }
 }
 
 function Invoke-Apply([switch]$Force) {
@@ -386,6 +397,7 @@ function Invoke-Apply([switch]$Force) {
     Update-Connection
     $s = $State.backend
     if (-not $s -or -not $s.gameRunning) { Set-Status 'Start Elden Ring in offline mode, load your character, then apply.'; return }
+    if ($s.needsElevation) { Restart-Elevated; return }
     if (-not $s.ready) { Set-Status $s.message; return }
     Set-Status 'Applying to game…'
     # Let WPF paint the status before the (short) blocking apply.
@@ -441,6 +453,8 @@ $ui.PasteBtn.Add_Click({
     } catch { Set-Status "Clipboard does not contain a preset JSON ($($_.Exception.Message))." }
 })
 $ui.ApplyBtn.Add_Click({ if ($State.dirty) { [void](Save-Current); $State.dirty = $false }; Update-Connection; Invoke-Apply -Force })
+$ui.ConnChip.Cursor = [Windows.Input.Cursors]::Hand
+$ui.ConnChip.Add_MouseLeftButtonUp({ if ($State.backend -and $State.backend.needsElevation) { Restart-Elevated } })
 $ui.AutoApply.Add_Click({ Save-Settings; if ($ui.AutoApply.IsChecked) { Set-Status 'Auto-apply on: changes are sent to the running offline game automatically.' } })
 
 $saveTimer = New-Object Windows.Threading.DispatcherTimer; $saveTimer.Interval = [TimeSpan]::FromMilliseconds(250)

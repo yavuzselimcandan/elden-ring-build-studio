@@ -43,7 +43,7 @@ namespace ERBS
         {
             Pid = p.Id;
             handle = OpenProcess(PROCESS_ACCESS, false, p.Id);
-            if (handle == IntPtr.Zero) throw new Win32Exception(Marshal.GetLastWin32Error(), "Cannot open eldenring.exe (is Easy Anti-Cheat running?)");
+            if (handle == IntPtr.Zero) throw new Win32Exception(Marshal.GetLastWin32Error(), "Cannot open the game process");
             var m = p.MainModule;
             ModuleBase = m.BaseAddress.ToInt64();
             ModuleSize = m.ModuleMemorySize;
