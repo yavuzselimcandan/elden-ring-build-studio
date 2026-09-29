@@ -38,7 +38,7 @@ Rules:
 
 After producing the preset, state which names you could not confirm in the catalog.
 
-Status of game application (be honest): stats and item grants have been verified live in the offline game with readback; equipping into slots and Ash of War attachment are only planned by the app until the equip adapter is verified in a live session. Never claim items were equipped or applied without the app's receipt.
+Status of game application (be honest): stats, item grants and equipping weapons/armor/talismans into slots are verified live (2026-09-29, game 2.2.0.0, via the game's own add-item and equip routines, with read-back). Not supported yet: Ash of War attachment and memorising spells into slots. Never claim something was applied without the app's receipt.
 
 ## Line format (preferred for chat answers, e.g. YouTube "Ask" / Gemini)
 
