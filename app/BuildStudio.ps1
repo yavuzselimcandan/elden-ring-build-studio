@@ -10,12 +10,6 @@ $index = Get-CatalogIndex $catalog
 $dir = Join-Path $root 'configs'
 New-Item -ItemType Directory -Force -Path $dir, (Join-Path $root 'runtime') | Out-Null
 $settingsPath = Join-Path $root 'runtime\studio-settings.json'
-# Tell the Cheat Engine autorun where this copy of the app lives (see BuildStudioAutorun.lua).
-try {
-    $rootDir = Join-Path $env:LOCALAPPDATA 'EldenRingBuildStudio'
-    New-Item -ItemType Directory -Force -Path $rootDir | Out-Null
-    [IO.File]::WriteAllText((Join-Path $rootDir 'root.txt'), ($root -replace '\\', '/'), (New-Object Text.UTF8Encoding $false))
-} catch { }
 
 $w = [Windows.Markup.XamlReader]::Load((New-Object System.Xml.XmlNodeReader ([xml](Get-Content -LiteralPath (Join-Path $root 'ui\MainWindow.xaml') -Raw -Encoding UTF8))))
 $iconPath = Join-Path $root 'assets\BuildStudio.ico'
@@ -30,7 +24,7 @@ $State = @{
     path = $null; name = 'New build'; source = $null; rows = New-Object System.Collections.ArrayList; stats = @{}
     plan = $null; target = $null; selected = $null; editRow = $null; category = ''
     dirty = $false; changedAt = [datetime]::MinValue; loading = $false; lastSavedJson = ''
-    pendingJson = ''; pendingPlan = $null; pendingSent = $false; pendingRequestId = $null; lastApplied = ''; lastBackendStartPid = $null
+    lastApplied = ''
     backend = $null
 }
 
@@ -74,7 +68,7 @@ function Import-BuildObject($b, [string]$path) {
         $ui.BuildName.Text = $State.name
         $ui.SourceText.Text = if ($b.source.url) { [string]$b.source.url } elseif ($path) { [IO.Path]::GetFileName($path) } else { 'Unsaved build' }
         foreach ($k in $script:BuildAttributeKeys) { $script:StatInputs[$k].Text = [string]$State.stats[$k] }
-        $State.target = $null; $State.editRow = $null; $State.lastSavedJson = ''; $State.pendingJson = ''; $State.pendingPlan = $null; $State.pendingSent = $false; $State.lastApplied = ''
+        $State.target = $null; $State.editRow = $null; $State.lastSavedJson = ''; $State.lastApplied = ''
     } finally { $State.loading = $false }
     Update-View
     Select-Target $null
@@ -379,49 +373,30 @@ function Update-Connection {
     $State.backend = $s
     if (-not $s -or -not $s.gameRunning) { $ui.ConnDot.Fill = $C.muted; $ui.ConnText.Text = 'Game not running' }
     elseif ($s.eacRunning) { $ui.ConnDot.Fill = $C.err; $ui.ConnText.Text = 'EAC active — start offline' }
-    elseif ($s.ready) { $ui.ConnDot.Fill = $C.ok; $ui.ConnText.Text = 'Connected' }
-    else { $ui.ConnDot.Fill = $C.warn; $ui.ConnText.Text = $(if ($s.cheatEngineRunning) { 'Linking Cheat Engine…' } else { 'Game running · not linked' }) }
-    $ui.ConnText.ToolTip = if ($s) { "$($s.message)`nGame $($s.gameVersion) · table $($s.tableVersion)" } else { $null }
-}
-
-function Clear-Pending { $State.pendingJson = ''; $State.pendingPlan = $null; $State.pendingSent = $false; $State.pendingRequestId = $null }
-
-function Read-ApplyResult {
-    $resultPath = Join-Path $root 'runtime\result.txt'
-    if (-not (Test-Path $resultPath)) { return }
-    $text = Get-Content -LiteralPath $resultPath -Raw -Encoding UTF8
-    $id = if ($text -match '(?m)^requestId=([a-zA-Z0-9-]+)') { $Matches[1] } else { $null }
-    if ($id -ne $State.pendingRequestId) { return }
-    if ($text -match '(?m)^ERROR:\s*(.*)$') { Set-Status "Game rejected the build: $($Matches[1])"; Clear-Pending; return }
-    if ($text -match '(?m)^(PARTIAL:|OK:\s*APPLIED\b|APPLIED:)') {
-        $State.lastApplied = $State.pendingJson
-        $summary = ($text -split "`n" | Where-Object { $_ -notmatch '^requestId=' }) -join ' '
-        $skipped = @($State.plan.items | Where-Object unresolved).Count
-        Set-Status ("Applied to game — {0}{1}" -f $summary.Trim(), $(if ($skipped) { " · $skipped unresolved row(s) skipped" } else { '' }))
-        Clear-Pending
-    }
+    elseif ($s.ready) { $ui.ConnDot.Fill = $C.ok; $ui.ConnText.Text = "Connected · Lv $($s.level)" }
+    elseif ($s.message -like 'Cannot attach*') { $ui.ConnDot.Fill = $C.err; $ui.ConnText.Text = 'Cannot attach' }
+    else { $ui.ConnDot.Fill = $C.warn; $ui.ConnText.Text = 'Load your character' }
+    $ui.ConnText.ToolTip = if ($s) { "$($s.message)$(if ($s.gameVersion) { "`nGame $($s.gameVersion)" })" } else { $null }
 }
 
 function Invoke-Apply([switch]$Force) {
-    if ($State.pendingSent) { Read-ApplyResult; return }
     $json = Get-BuildObject | ConvertTo-Json -Depth 8
     if (-not $Force -and $json -eq $State.lastApplied) { return }
     if (@($State.plan.issues | Where-Object { $_ -match '^Invalid attribute' }).Count) { Set-Status 'Fix invalid attributes before applying.'; return }
+    Update-Connection
     $s = $State.backend
     if (-not $s -or -not $s.gameRunning) { Set-Status 'Start Elden Ring in offline mode, load your character, then apply.'; return }
-    if ($s.eacRunning) { Set-Status 'Easy Anti-Cheat is running. Launch the game offline (EAC disabled) to apply builds.'; return }
-    if (-not $s.ready) {
-        $game = Get-Process -Name eldenring -ErrorAction SilentlyContinue
-        if ($game -and $game.Id -ne $State.lastBackendStartPid) { $r = Start-BuildBackend -Root $root; $State.lastBackendStartPid = $game.Id; Set-Status $r.message } else { Set-Status $s.message }
-        $State.pendingJson = $json; $State.pendingPlan = $State.plan
-        return
-    }
+    if (-not $s.ready) { Set-Status $s.message; return }
+    Set-Status 'Applying to game…'
+    # Let WPF paint the status before the (short) blocking apply.
+    $w.Dispatcher.Invoke([Action]{}, [Windows.Threading.DispatcherPriority]::Background)
     try {
         $result = Invoke-BuildPlan -Plan $State.plan -Root $root
-        if ($result.pending) { $State.pendingSent = $true; $State.pendingRequestId = [string]$result.requestId; $State.pendingJson = $json; Set-Status $result.message }
-        elseif ($result.ok -and $result.applied) { $State.lastApplied = $json; Clear-Pending; Set-Status $result.message }
-        else { Clear-Pending; Set-Status $(if ($result.message) { $result.message } else { 'Build was not applied.' }) }
-    } catch { Clear-Pending; Set-Status "Apply failed: $($_.Exception.Message)" }
+        if ($result.ok) { $State.lastApplied = $json }
+        $skipped = @($State.plan.items | Where-Object unresolved).Count
+        Set-Status ("{0}{1}{2}" -f $(if ($result.applied) { 'Applied ✓ ' } elseif ($result.ok) { 'Partly applied: ' } else { '' }), $result.message, $(if ($skipped) { " · $skipped unresolved row(s) skipped" } else { '' }))
+        $ui.StatusText.ToolTip = ($result.lines -join "`n")
+    } catch { Set-Status "Apply failed: $($_.Exception.Message)" }
 }
 
 # ---------------------------------------------------------------- wiring
@@ -480,7 +455,7 @@ $saveTimer.Add_Tick({
     } catch { Set-Status $_.Exception.Message }
 })
 $pollTimer = New-Object Windows.Threading.DispatcherTimer; $pollTimer.Interval = [TimeSpan]::FromSeconds(2)
-$pollTimer.Add_Tick({ try { Update-Connection; if ($State.pendingSent) { Read-ApplyResult } elseif ($State.pendingPlan -and $State.backend.ready) { Invoke-Apply -Force } } catch { } })
+$pollTimer.Add_Tick({ try { Update-Connection } catch { } })
 $w.Add_Closed({ $saveTimer.Stop(); $pollTimer.Stop(); if ($State.dirty) { try { [void](Save-Current) } catch { } }; Save-Settings })
 
 # ---------------------------------------------------------------- start
