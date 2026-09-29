@@ -1,6 +1,6 @@
 # Next steps
 
-1. **Install once:** run `powershell -ExecutionPolicy Bypass -File tools/Install.ps1` and approve the UAC prompt, so Cheat Engine's autorun reads the app location from `%LOCALAPPDATA%` (see current_state.md).
+1. **Live check:** start the game offline, load the character, run `tools/Probe-Game.ps1` (read-only) and read its report.
 2. **First live auto-equip session** (offline game, character loaded, recent manual save backup exists anyway):
    - Apply a small preset (one weapon in R1, one armor piece, one talisman) with the Apply button.
    - Read `app/runtime/equip-calibration.txt`: it must say `result=verified idBase=0x398` (or explain the mismatch). If unverified, do not loosen the check; inspect the dumped rows.
