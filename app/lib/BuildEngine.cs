@@ -301,7 +301,10 @@ namespace ERBS
             if (!Mem.Write(Stub, code.ToArray())) throw new InvalidOperationException("stub write failed");
         }
 
-        static readonly ulong[] BufferTemplate = { 0, 0, 0, 0, 0xF00006AE00000001, 1, 0xFFFFFFFFFFFFFFFF, 0xFFFFFFFF00000000, 0xFFFFFFFFFFFFFFFF, 0xFFFFFFFF00000000 };
+        // +0x00: dword read through r8 ("ItemSpawnData2" in the Hexinton table, FFFFFFFF). It must be -1: with 0 the
+        // game creates weapon/armor/ash instances that the inventory never shows. Confirmed live 2026-09-29: with 0
+        // a granted shield was invisible; with -1 a granted Dagger appeared in the inventory. Goods ignore it.
+        static readonly ulong[] BufferTemplate = { 0xFFFFFFFFFFFFFFFF, 0, 0, 0, 0xF00006AE00000001, 1, 0xFFFFFFFFFFFFFFFF, 0xFFFFFFFF00000000, 0xFFFFFFFFFFFFFFFF, 0xFFFFFFFF00000000 };
 
         public void Grant(uint raw, int quantity)
         {
