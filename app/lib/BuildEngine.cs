@@ -8,7 +8,7 @@ using System.Threading;
 
 namespace ERBS
 {
-    public sealed class InvRow { public long Address; public uint Handle; public uint Raw; public uint Qty; }
+    public sealed class InvRow { public int Index; public long Address; public uint Handle; public uint Raw; public uint Qty; }
 
     public sealed class EquipLayout { public int IdBase; public int HandleBase; public string TalismanFormat; public int Evidence; }
 
@@ -46,7 +46,7 @@ namespace ERBS
             for (int i = 0; i < count; i++)
             {
                 long e = baseAddr + i * 0x18;
-                var r = new InvRow { Address = e, Handle = (uint)D(m, e), Raw = (uint)D(m, e + 4), Qty = (uint)D(m, e + 8) };
+                var r = new InvRow { Index = i, Address = e, Handle = (uint)D(m, e), Raw = (uint)D(m, e + 4), Qty = (uint)D(m, e + 8) };
                 if (r.Qty > 0 && r.Handle != 0 && r.Handle != 0xFFFFFFFF && r.Raw != 0xFFFFFFFF) rows.Add(r);
             }
             return rows;
@@ -170,9 +170,12 @@ namespace ERBS
             return null;
         }
 
-        public static List<EquipResult> Apply(IMemory m, long player, List<InvRow> inventory, EquipLayout layout, IEnumerable<EquipRequest> requests)
+        // equipper: how a slot is actually changed. Live code passes the game's own equip routine (keeps menu,
+        // model and save consistent); null writes the two ChrAsm arrays directly (unit tests only).
+        public static List<EquipResult> Apply(IMemory m, long player, List<InvRow> inventory, EquipLayout layout, IEnumerable<EquipRequest> requests, Func<int, InvRow, bool> equipper = null, HashSet<uint> invalid = null)
         {
             if (layout == null) throw new InvalidOperationException("equip layout is not calibrated");
+            if (invalid == null) invalid = new HashSet<uint>();
             var used = new Dictionary<uint, int>();
             for (int i = 0; i < Count; i++) { uint h = U(m, player + layout.HandleBase + 4 * i); if (h != 0 && h != Empty) used[h] = i; }
             var results = new List<EquipResult>();
@@ -189,18 +192,39 @@ namespace ERBS
                         uint raw = Categories.Raw(r.Category, r.Id, r.Upgrade);
                         uint oldHandle = U(m, player + layout.HandleBase + 4 * index), oldValue = U(m, player + layout.IdBase + 4 * index);
                         int at; bool currentHere = used.TryGetValue(oldHandle, out at) && at == index;
-                        InvRow pick = inventory.FirstOrDefault(x => x.Raw == raw && (!used.ContainsKey(x.Handle) || (currentHere && x.Handle == oldHandle)));
+                        // Newest copy first: older duplicates may be invisible instances left by the pre-fix grant bug.
+                        InvRow pick = inventory.OrderByDescending(x => x.Index).FirstOrDefault(x => x.Raw == raw && !invalid.Contains(x.Handle) && (!used.ContainsKey(x.Handle) || (currentHere && x.Handle == oldHandle)));
                         if (pick == null) status = inventory.Any(x => x.Raw == raw) ? "already-equipped-elsewhere" : "not-owned";
                         else if (pick.Handle == oldHandle) status = "already-equipped";
                         else
                         {
                             uint value = r.Category == "armor" ? (uint)r.Id : r.Category == "talisman" ? (layout.TalismanFormat == "handle" ? pick.Handle : (uint)r.Id) : raw;
                             written.Add(Tuple.Create(index, oldHandle, oldValue));
-                            if (!m.WriteInt32(player + layout.HandleBase + 4 * index, (int)pick.Handle)) throw new InvalidOperationException("handle write failed");
-                            if (!m.WriteInt32(player + layout.IdBase + 4 * index, (int)value)) throw new InvalidOperationException("id write failed");
-                            if (U(m, player + layout.HandleBase + 4 * index) != pick.Handle || U(m, player + layout.IdBase + 4 * index) != value) throw new InvalidOperationException("equip readback mismatch");
-                            used.Remove(oldHandle); used[pick.Handle] = index;
-                            status = "equipped";
+                            if (equipper != null) { if (!equipper(index, pick)) throw new InvalidOperationException("game equip routine refused " + r.Slot); }
+                            else
+                            {
+                                if (!m.WriteInt32(player + layout.HandleBase + 4 * index, (int)pick.Handle)) throw new InvalidOperationException("handle write failed");
+                                if (!m.WriteInt32(player + layout.IdBase + 4 * index, (int)value)) throw new InvalidOperationException("id write failed");
+                            }
+                            uint gotHandle = U(m, player + layout.HandleBase + 4 * index), gotValue = U(m, player + layout.IdBase + 4 * index);
+                            // The game routine sets the handle at once but fills the id array on a later frame.
+                            for (int wait = 0; equipper != null && gotHandle == pick.Handle && gotValue != value && wait < 20; wait++) { Thread.Sleep(100); gotValue = U(m, player + layout.IdBase + 4 * index); }
+                            if (equipper != null && gotHandle == pick.Handle && gotValue == Empty)
+                            {
+                                // The game accepted the handle but refused the item (id stays -1): the inventory
+                                // instance is invalid (created by the pre-fix grant bug). Put the old item back.
+                                written.RemoveAt(written.Count - 1);
+                                var oldRow = inventory.FirstOrDefault(x => x.Handle == oldHandle);
+                                if (oldRow == null || !equipper(index, oldRow)) { m.WriteInt32(player + layout.HandleBase + 4 * index, (int)oldHandle); m.WriteInt32(player + layout.IdBase + 4 * index, (int)oldValue); }
+                                status = "invalid-instance";
+                                invalid.Add(pick.Handle);
+                            }
+                            else
+                            {
+                                if (gotHandle != pick.Handle || gotValue != value) throw new InvalidOperationException(string.Format("equip readback mismatch in {0}: expected {1:X8}/{2}, got {3:X8}/{4}", r.Slot, pick.Handle, value, gotHandle, gotValue));
+                                used.Remove(oldHandle); used[pick.Handle] = index;
+                                status = "equipped";
+                            }
                         }
                     }
                     results.Add(new EquipResult { Slot = r.Slot, Id = r.Id, Status = status });
@@ -210,6 +234,8 @@ namespace ERBS
             {
                 for (int k = written.Count - 1; k >= 0; k--)
                 {
+                    var oldRow = inventory.FirstOrDefault(x => x.Handle == written[k].Item2);
+                    if (equipper != null && oldRow != null) { try { if (equipper(written[k].Item1, oldRow)) continue; } catch { } }
                     m.WriteInt32(player + layout.HandleBase + 4 * written[k].Item1, (int)written[k].Item2);
                     m.WriteInt32(player + layout.IdBase + 4 * written[k].Item1, (int)written[k].Item3);
                 }
@@ -318,6 +344,50 @@ namespace ERBS
             BitConverter.GetBytes(-1).CopyTo(b, 0x30);
             if (!Mem.Write(Buffer, b)) throw new InvalidOperationException("item buffer write failed");
             Mem.Execute(Stub, 0, 5000);
+        }
+
+        // ---- equip through the game's own routine (what the equipment menu does)
+        // Source: The Grand Archives CT, equipItem_code.cea: equipGear(EquipGameData, slot, &handle, invIdx + tailDataIdx, 1, 1, 0)
+        // with EquipGameData = PlayerGameData+0x2B0 and EquipInventoryData = PlayerGameData+0x408 (+0x10 list, +0x18 count, +0x1C tail index).
+        public long EquipGearFunc, EquipStub, EquipData;
+        public const int EquipGameDataOffset = 0x2B0, EquipInventoryDataOffset = 0x408;
+
+        public void PrepareEquip()
+        {
+            if (EquipStub != 0) return;
+            EquipGearFunc = Mem.ScanUnique("?? 8B F1 ?? 8B D8 ?? 63 EA ?? 8B F9", "equip routine") - 0x17;
+            long mem = Mem.Alloc(0x100);
+            EquipData = mem; EquipStub = mem + 0x20;
+        }
+
+        public int TailIndex(long player) { return Mem.ReadInt32(player + EquipInventoryDataOffset + 0x1C); }
+
+        // Equips inventory row 'row' (whose +0 field is 'handle') into ChrAsm slot 0..21. Returns the routine's result.
+        public uint EquipViaGame(long player, int slot, int row, uint handle)
+        {
+            PrepareEquip();
+            if (slot < 0 || slot > 21) throw new ArgumentOutOfRangeException("slot");
+            if (!Mem.WriteInt32(EquipData, unchecked((int)handle))) throw new InvalidOperationException("equip data write failed");
+            long idx = row + TailIndex(player);
+            var code = new List<byte>();
+            code.AddRange(new byte[] { 0x48, 0x83, 0xEC, 0x48 });                                  // sub rsp,48
+            code.AddRange(new byte[] { 0x48, 0xC7, 0x44, 0x24, 0x20, 1, 0, 0, 0 });                // mov qword [rsp+20],1
+            code.AddRange(new byte[] { 0x48, 0xC7, 0x44, 0x24, 0x28, 1, 0, 0, 0 });                // mov qword [rsp+28],1
+            code.AddRange(new byte[] { 0x48, 0xC7, 0x44, 0x24, 0x30, 0, 0, 0, 0 });                // mov qword [rsp+30],0
+            code.AddRange(new byte[] { 0x48, 0xB9 }); code.AddRange(BitConverter.GetBytes(player + EquipGameDataOffset)); // mov rcx,EquipGameData
+            code.AddRange(new byte[] { 0x48, 0xBA }); code.AddRange(BitConverter.GetBytes((long)slot));                  // mov rdx,slot
+            code.AddRange(new byte[] { 0x49, 0xB8 }); code.AddRange(BitConverter.GetBytes(EquipData));                  // mov r8,&handle
+            code.AddRange(new byte[] { 0x49, 0xB9 }); code.AddRange(BitConverter.GetBytes(idx));                        // mov r9,idx
+            code.AddRange(new byte[] { 0x48, 0xB8 }); code.AddRange(BitConverter.GetBytes(EquipGearFunc));              // mov rax,equipGear
+            code.AddRange(new byte[] { 0xFF, 0xD0 });                                                                   // call rax
+            code.AddRange(new byte[] { 0x48, 0x83, 0xC4, 0x48, 0xC3 });                                                 // add rsp,48 ; ret
+            if (!Mem.Write(EquipStub, code.ToArray())) throw new InvalidOperationException("equip stub write failed");
+            return Mem.Execute(EquipStub, 0, 5000);
+        }
+
+        public Func<int, InvRow, bool> GameEquipper(long player)
+        {
+            return (slot, row) => EquipViaGame(player, slot, row.Index, row.Handle) != 0;
         }
 
         public void Dispose() { Mem.Dispose(); }

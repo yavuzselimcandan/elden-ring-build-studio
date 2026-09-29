@@ -130,7 +130,25 @@ function Invoke-BuildPlan {
         if (-not $layout) { $problems.Add('equipment layout could not be verified; nothing equipped'); $lines.Add('equip=skipped (layout unverified, see runtime/equip-calibration.txt)') }
         else {
             $lines.Add(('equip layout idBase=0x{0:X} evidence={1}' -f $layout.IdBase, $layout.Evidence))
-            foreach ($res in [ERBS.Equipment]::Apply($session.Mem, $player, $rows, $layout, $requests)) {
+            $equipper = $session.GameEquipper($player)
+            $invalid = New-Object 'System.Collections.Generic.HashSet[uint32]'
+            $results = @([ERBS.Equipment]::Apply($session.Mem, $player, $rows, $layout, $requests, $equipper, $invalid))
+            # Copies the game refuses to equip are invalid instances from the old grant bug: grant a fresh
+            # copy (with the fixed call) and equip that one instead.
+            $retry = New-Object 'System.Collections.Generic.List[ERBS.EquipRequest]'
+            foreach ($res in $results | Where-Object Status -eq 'invalid-instance') {
+                $req = $requests | Where-Object Slot -eq $res.Slot | Select-Object -First 1
+                $session.Grant([ERBS.Categories]::Raw($req.Category, $req.Id, $req.Upgrade), 1)
+                $lines.Add("re-granted fresh copy for $($res.Slot) ($($req.Id)+$($req.Upgrade)); old copy is invalid")
+                $retry.Add($req)
+            }
+            if ($retry.Count) {
+                Start-Sleep -Milliseconds 300
+                $rows = [ERBS.Inventory]::Read($session.Mem, $invBase)
+                $second = @([ERBS.Equipment]::Apply($session.Mem, $player, $rows, $layout, $retry, $equipper, $invalid))
+                $results = @($results | Where-Object Status -ne 'invalid-instance') + $second
+            }
+            foreach ($res in $results) {
                 $lines.Add("equip $($res.Slot) $($res.Id) $($res.Status)")
                 if ($res.Status -in 'equipped', 'already-equipped') { $equipped++ } else { $problems.Add("$($res.Slot): $($res.Status)") }
             }

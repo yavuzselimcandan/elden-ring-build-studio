@@ -51,13 +51,13 @@ Check ($null -eq [ERBS.Equipment]::Calibrate($m3, $PLAYER, [ERBS.Inventory]::Rea
 # 3. equip weapon / armor / talisman, idempotent re-apply, second instance, not-owned, wrong category
 $res = [ERBS.Equipment]::Apply($m, $PLAYER, $rows, $layout, (ReqList (New-Req 'R1' 'weapon' 3180800 25) (New-Req 'Head' 'armor' 130000 0) (New-Req 'Talisman4' 'talisman' 1150 0)))
 Check (@($res | Where-Object Status -eq 'equipped').Count -eq 3) 'three items equipped'
-Check ($m.U($PLAYER + 0x340 + 4) -eq 0x807F0200 -and $m.U($PLAYER + 0x398 + 4) -eq 3180825) 'R1 handle + raw id'
+Check ($m.U($PLAYER + 0x340 + 4) -eq 0x807F0201 -and $m.U($PLAYER + 0x398 + 4) -eq 3180825) 'R1 handle (newest copy) + raw id'
 Check ($m.U($PLAYER + 0x340 + 48) -eq 0x907F0300 -and $m.U($PLAYER + 0x398 + 48) -eq 130000) 'Head handle + param id'
 Check ($m.U($PLAYER + 0x340 + 80) -eq 0xA000047E -and $m.U($PLAYER + 0x398 + 80) -eq 1150) 'Talisman4 handle + id'
 $res = [ERBS.Equipment]::Apply($m, $PLAYER, $rows, $layout, (ReqList (New-Req 'R1' 'weapon' 3180800 25)))
 Check ($res[0].Status -eq 'already-equipped') 'idempotent'
 $res = [ERBS.Equipment]::Apply($m, $PLAYER, $rows, $layout, (ReqList (New-Req 'L2' 'weapon' 3180800 25) (New-Req 'L3' 'weapon' 3180800 25)))
-Check ($res[0].Status -eq 'equipped' -and $m.U($PLAYER + 0x340 + 8) -eq 0x807F0201 -and $res[1].Status -eq 'already-equipped-elsewhere') 'second copy / no third copy'
+Check ($res[0].Status -eq 'equipped' -and $m.U($PLAYER + 0x340 + 8) -eq 0x807F0200 -and $res[1].Status -eq 'already-equipped-elsewhere') 'second copy / no third copy'
 $before = $m.U($PLAYER + 0x398 + 52)
 $res = [ERBS.Equipment]::Apply($m, $PLAYER, $rows, $layout, (ReqList (New-Req 'Chest' 'armor' 424242 0) (New-Req 'Chest' 'weapon' 3180800 25)))
 Check ($res[0].Status -eq 'not-owned' -and $res[1].Status -eq 'wrong-category' -and $m.U($PLAYER + 0x398 + 52) -eq $before) 'not-owned / wrong-category untouched'
@@ -73,3 +73,14 @@ Check ($failed -and $m.U($PLAYER + 0x340 + 4) -eq $r1h -and $m.U($PLAYER + 0x398
 Check ([ERBS.Categories]::Raw('weapon', 3180800, 25) -eq 3180825) 'weapon raw'
 Check ([ERBS.Categories]::Raw('ash', 60700, 0) -eq [uint32]2147544348) 'ash raw nibble 8'
 'Engine checks passed (inventory discovery, calibration, equip, rollback).'
+
+# 6. pluggable equipper (live code passes the game's equip routine)
+$m = New-Character 0x398; $rows = [ERBS.Inventory]::Read($m, $INV); $layout = [ERBS.Equipment]::Calibrate($m, $PLAYER, $rows, $rep)
+$calls = New-Object System.Collections.ArrayList
+$equipper = [Func[int, ERBS.InvRow, bool]] { param($slot, $row) [void]$calls.Add("$slot/$($row.Index)"); $m.Set32($PLAYER + 0x340 + 4 * $slot, $row.Handle); $m.Set32($PLAYER + 0x398 + 4 * $slot, $row.Raw); $true }
+$res = [ERBS.Equipment]::Apply($m, $PLAYER, $rows, $layout, (ReqList (New-Req 'R2' 'weapon' 3180800 25)), $equipper)
+Check ($res[0].Status -eq 'equipped' -and $calls.Count -eq 1 -and $calls[0] -eq '3/15') "equipper called with slot 3 and newest row ($($calls -join ','))"
+$refuse = [Func[int, ERBS.InvRow, bool]] { param($slot, $row) $false }
+$failed = $false; try { [void][ERBS.Equipment]::Apply($m, $PLAYER, $rows, $layout, (ReqList (New-Req 'R3' 'weapon' 1040000 10)), $refuse) } catch { $failed = $true }
+Check (-not $failed) 'not-owned item never reaches the equipper'
+'Equipper checks passed.'
