@@ -1,4 +1,4 @@
-# Preset model: parsing, catalog resolution and loadout (slot) planning.
+﻿# Preset model: parsing, catalog resolution and loadout (slot) planning.
 # The heavy lifting (normalisation, fuzzy search, string parsing) lives in lib/Resolver.cs.
 
 if (-not ('ERBS.CatalogIndex' -as [type])) {
@@ -124,12 +124,14 @@ function Resolve-BuildPlan {
     $issues = New-Object System.Collections.ArrayList
     $notes = New-Object System.Collections.ArrayList
     $resolved = New-Object System.Collections.ArrayList
+    $rowIndex = -1
     foreach ($i in @(ConvertTo-BuildItems $Build)) {
+        $rowIndex++
         $name = ([string]$i.name).Trim()
         if (-not $name) { continue }
         $category = [string]$i.category
         $r = Resolve-CatalogName $index $name $category ([string]$i.affinity)
-        $row = [ordered]@{ category = $category; name = $name; requestedName = $name; itemId = $null; upgrade = $i.upgrade; quantity = $i.quantity; ashOfWarId = $null; ashOfWar = [string]$i.ashOfWar; slot = [string]$i.slot; match = $r.method; suggestions = @($r.suggestions); gameValidated = $false; unresolved = $true }
+        $row = [ordered]@{ rowIndex = $rowIndex; category = $category; name = $name; requestedName = $name; itemId = $null; upgrade = $i.upgrade; quantity = $i.quantity; ashOfWarId = $null; ashOfWar = [string]$i.ashOfWar; slot = [string]$i.slot; match = $r.method; suggestions = @($r.suggestions); gameValidated = $false; unresolved = $true }
         if (-not $r.entry) {
             $parsed = [ERBS.ItemParser]::Parse($name, $category)
             if ($parsed.LooksLikeNote) { $row.match = 'note'; [void]$notes.Add("Ignored note-like entry: $name") ; continue }
@@ -191,6 +193,7 @@ function Get-BuildLoadout {
     $pending = New-Object System.Collections.ArrayList
     foreach ($it in $items) {
         $slot = [string]$it.slot
+        if ($slot -eq 'Inventory') { continue }
         if ($slot -and $slot -in $script:LoadoutSlots -and -not $loadout.Contains($slot)) { $loadout[$slot] = $it } else { [void]$pending.Add($it) }
     }
     foreach ($it in $pending) {
@@ -215,7 +218,7 @@ function Get-BuildLoadout {
         if ($slot) { $loadout[$slot] = $it }
     }
     $out = [ordered]@{}
-    foreach ($s in $script:LoadoutSlots) { if ($loadout.Contains($s)) { $it = $loadout[$s]; $out[$s] = [pscustomobject]@{ category = $it.category; itemId = [long]$it.itemId; name = $it.name; upgrade = [int]$it.upgrade } } }
+    foreach ($s in $script:LoadoutSlots) { if ($loadout.Contains($s)) { $it = $loadout[$s]; $out[$s] = [pscustomobject]@{ rowIndex = $it.rowIndex; category = $it.category; itemId = [long]$it.itemId; name = $it.name; upgrade = [int]$it.upgrade } } }
     return [pscustomobject]$out
 }
 

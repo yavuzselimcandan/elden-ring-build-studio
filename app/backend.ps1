@@ -31,13 +31,13 @@ function Invoke-BuildPlan {
     if($Plan.attributes -is [System.Collections.IDictionary]){$Plan.attributes.Keys|ForEach-Object{$attrs[[string]$_]=$Plan.attributes[$_]}}elseif($Plan.attributes){$Plan.attributes.psobject.Properties|ForEach-Object{$attrs[$_.Name]=$_.Value}}
     foreach($name in $attrs.Keys){if($name -notin $allowed -or [int]$attrs[$name] -lt 1 -or [int]$attrs[$name] -gt 99){throw "Invalid attribute: $name"}}
     foreach($i in $items){if($null -eq $i.itemId){continue};if([string]$i.category -notin @('weapon','armor','talisman','goods','ash')){throw "Unsupported item category: $($i.category)"};if([long]$i.itemId -le 0 -or [int]$i.quantity -lt 1 -or [int]$i.quantity -gt 999){throw 'Invalid typed item request'}}
-    if($Plan.equipment -or @($items | Where-Object { $_.slot -and [string]$_.slot -ne '' }).Count){throw 'Equipment slot writes are not supported by the vetted adapter'}
     $dir=Join-Path $Root 'runtime';New-Item -ItemType Directory -Force $dir|Out-Null
     $status=Get-BuildBackendStatus $Root;if(-not $status.ready){return [pscustomobject]@{ok=$false;applied=$false;message=$status.message}}
-    $pendingItems=@($items|Where-Object {$null -eq $_.itemId -or $null -ne $_.ashOfWarId}|ForEach-Object{$_.name});$requestItems=@($items|Where-Object {$null -ne $_.itemId -and $null -eq $_.ashOfWarId})
+    # Weapons are granted even when an Ash of War is requested; attaching the Ash is not supported yet and is reported as pending.
+    $pendingItems=@($items|Where-Object {$null -eq $_.itemId}|ForEach-Object{$_.name})+@($items|Where-Object {$null -ne $_.itemId -and $null -ne $_.ashOfWarId}|ForEach-Object{"$($_.name) (Ash of War not attached)"});$requestItems=@($items|Where-Object {$null -ne $_.itemId -and -not $_.unresolved})
     $backup=Backup-ActiveBuildSave $Root
     Remove-Item (Join-Path $dir 'result.txt') -Force -ErrorAction SilentlyContinue
     $requestId=[guid]::NewGuid().ToString('N');$mode=if($requestItems.Count){'build'}else{'stats'};$lines=@('version=1',("mode=$mode"),("requestId=$requestId"))+@($requestItems|ForEach-Object{'item={0}|{1}|{2}|{3}' -f $_.category,$_.itemId,$_.upgrade,$_.quantity})+@($attrs.Keys|ForEach-Object{'stat={0}|{1}' -f $_,$attrs[$_]})
     Set-Content (Join-Path $dir 'request.txt') $lines -Encoding ASCII;Set-Content (Join-Path $dir 'boot.flag') ([int64]([DateTimeOffset]::UtcNow.ToUnixTimeSeconds())) -Encoding ASCII
-    [pscustomobject]@{ok=$false;applied=$false;pending=$true;requestId=$requestId;message='Queued supported stats; item requests remain pending';pendingItems=$pendingItems;backup=$backup}
+    [pscustomobject]@{ok=$false;applied=$false;pending=$true;requestId=$requestId;message='Build sent to the game; waiting for verified readback';pendingItems=$pendingItems;backup=$backup}
 }
