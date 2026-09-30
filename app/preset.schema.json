@@ -1,1 +1,50 @@
-{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object","required":["schemaVersion","name","attributes","items"],"properties":{"schemaVersion":{"const":"2.0"},"name":{"type":"string","minLength":1},"source":{"type":["object","null"]},"attributes":{"type":"object","additionalProperties":{"type":["integer","string","null"]}},"items":{"type":"array","items":{"type":"object","required":["category","name","upgrade","quantity"],"properties":{"category":{"enum":["weapon","armor","talisman","goods","ash"]},"name":{"type":"string"},"upgrade":{"type":"integer","minimum":0,"maximum":25},"quantity":{"type":"integer","minimum":1,"maximum":999},"ashOfWar":{"type":"string"}}}}}
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "elden-ring-build-studio-preset-3.0",
+  "title": "Build Studio preset",
+  "description": "v3 adds optional slot and affinity per item. v2 presets (no slots) remain valid input; slots are then assigned automatically.",
+  "type": "object",
+  "required": ["schemaVersion", "name", "attributes", "items"],
+  "properties": {
+    "schemaVersion": { "enum": ["2.0", "3.0"] },
+    "name": { "type": "string", "minLength": 1 },
+    "source": {
+      "type": ["object", "null"],
+      "properties": {
+        "url": { "type": "string" },
+        "evidence": { "type": "string", "description": "Only facts actually observed in the source." },
+        "unresolved": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "attributes": {
+      "type": "object",
+      "description": "Null or missing keeps the character's current value.",
+      "properties": {
+        "vig": { "$ref": "#/$defs/stat" }, "mind": { "$ref": "#/$defs/stat" }, "end": { "$ref": "#/$defs/stat" }, "str": { "$ref": "#/$defs/stat" },
+        "dex": { "$ref": "#/$defs/stat" }, "int": { "$ref": "#/$defs/stat" }, "fai": { "$ref": "#/$defs/stat" }, "arc": { "$ref": "#/$defs/stat" }
+      },
+      "additionalProperties": false
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["category", "name"],
+        "properties": {
+          "category": { "enum": ["weapon", "armor", "talisman", "goods", "ash"], "description": "Spells, crystal tears, consumables, materials and spirit ashes are goods." },
+          "name": { "type": "string", "description": "Canonical English in-game name. Infused weapons use the affinity prefix (\"Heavy Claymore\") or the affinity field." },
+          "upgrade": { "type": "integer", "minimum": 0, "maximum": 25, "default": 0, "description": "Weapons only." },
+          "quantity": { "type": "integer", "minimum": 1, "maximum": 999, "default": 1 },
+          "ashOfWar": { "type": "string", "description": "Weapons that accept Ashes of War only; a unique weapon's built-in skill is ignored." },
+          "affinity": { "enum": ["", "Heavy", "Keen", "Quality", "Fire", "Flame Art", "Lightning", "Sacred", "Magic", "Cold", "Poison", "Blood", "Occult"] },
+          "slot": {
+            "type": "string",
+            "description": "Equipment slot. Omit to auto-assign; 'Inventory' means grant without equipping.",
+            "pattern": "^(R[1-3]|L[1-3]|Arrow[12]|Bolt[12]|Head|Chest|Arms|Legs|Talisman[1-4]|Spell([1-9]|1[0-4])|Inventory)$"
+          }
+        }
+      }
+    }
+  },
+  "$defs": { "stat": { "type": ["integer", "null"], "minimum": 1, "maximum": 99 } }
+}

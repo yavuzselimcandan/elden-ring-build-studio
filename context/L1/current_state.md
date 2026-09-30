@@ -1,32 +1,47 @@
-# Current state — 2026-09-06
+# Current state — 2026-09-29 (end of the overhaul session)
 
-## Working/observed
+**The product works end to end on the user's machine**: chat/Gemini build text → preset → resolved plan → applied to the
+running offline game (stats, items, equipment, spells), each change read back from game memory, confirmed in-game by the user.
+Open and half-done work: [next_steps.md](next_steps.md).
 
-- `app/BuildStudio.ps1`: native WPF app; New/Open/Save, eight attribute inputs, item grid and catalog search. Autosaves/resolves changed values after the grid loses keyboard focus; explicit Save commits edits.
-- `app/BuildModel.ps1`: imports both legacy equipment-string presets and v2 item objects. Resolves exact category/name matches; separates weapon upgrades and Ash of War; reports unknown names, invalid quantities and attributes.
-- `app/catalog.json`: 6,352 name/ID entries extracted from local Hexinton v8.0.1 dropdowns. These are table IDs, NOT validated against the installed game's live inventory routines.
-- `app/preset.schema.json`: v2 contract. `app/build.schema.json` in original source is obsolete v1; installed desktop copy was replaced with v2. Consumers must use preset.schema.json.
-- `app/EldenRingBuildConfigurator.ps1` delegates to BuildStudio.ps1. Desktop `.lnk` launches this entry with Windows PowerShell, hidden console, STA. The VBS quoting error was also fixed.
-- Local skill and private personal plugin were updated with concrete v2 import instructions. Plugin version at last install: `1.0.0+codex.20260906113616`.
+## Where things live
 
-## Missing or unsafe to assume
+- Repository = installed app: `C:/Users/YAVUZ-PC/Documents/GitHub/elden-ring-build-studio`. Run `app/BuildStudio.ps1`.
+  Desktop shortcut **Elden Ring Build Studio.lnk** → `app/Launch.vbs` (no console window), icon `app/assets/BuildStudio.ico`,
+  created by `tools/Install.ps1`.
+- User presets: `app/configs/*.json` (+ generated `*.plan.json`), git-ignored. Runtime output (save backups, apply ledgers,
+  calibration reports, settings): `app/runtime/`, git-ignored.
+- Branch `overhaul/v3`, PR #1 open against `main`.
 
-- `backend.ps1` always returns ready/applied=false. `bridge.lua` raises an explicit unimplemented error. No CE live application, stat write, equipment placement, affinity/Ash installation, backup transaction or inventory readback is implemented.
-- BuildStudio displays a hardcoded mismatch message; it does not invoke the backend or monitor game/CE. There is no real-time game synchronization.
-- Current resolver only enforces general +0..25, not per-weapon upgrade limits, infusion legality, item stack limits, class minimums or level/stat consistency. Unknown sources and confirmation/evidence are not fully schema-validated. Plan IDs/receipts/deduplication are not implemented.
-- Editing creates one `.previous` preset copy; this is not a game-save backup. New editor can still overwrite a same-named preset; naming/collision handling needs improvement.
-- Some historical files remain: index.html/app.py/launch.ps1, manifest.json and BUILD_IMPORT.md. They are stale prototypes, not the canonical application contract. Source README may be stale; STATUS.md and this context are authoritative.
+## Components (all verified)
 
-## Local machine (do not package these assets)
+| Area | Files | Status |
+|---|---|---|
+| Resolver | `app/lib/Resolver.cs`, `app/BuildModel.ps1` | normalised/alias/plural/fuzzy match, string parsing, duplicate policy, unique-weapon skills, loadout planning. Tests: `test_resolver.ps1`, `test_build_model.ps1`, `test_luna_normalization.ps1`, `test_full_plan.ps1` |
+| Chat import | `app/BuildText.ps1` | Gemini prompt (≈500 chars) + tolerant line-format/JSON parser, invariant culture. Test: `test_build_text.ps1` |
+| UI | `app/BuildStudio.ps1`, `app/ui/MainWindow.xaml` | preset library, Gemini prompt button, auto clipboard import (once per text), slot board, fuzzy picker, resolution panel, connection chip, elevation relaunch, autosave |
+| Game access | `app/lib/GameMemory.cs` | OpenProcess/RPM/WPM, signature scan, remote call. Test: `test_game_memory.ps1` (throw-away process) |
+| Game logic | `app/lib/BuildEngine.cs`, `app/backend.ps1` | stats, grants (AddItem), inventory discovery, equip (game equipGear routine), spells (changeMagic), save backup, ledger. Test: `test_engine.ps1` (mocked memory) |
 
-- Game: `D:/Games/ELDEN RING/Game/eldenring.exe`, observed FileVersion `2.2.0.0`.
-- CT: `C:/Users/YAVUZ-PC/Downloads/eldenring_all-in-one_Hexinton-v8.0.1.CT`; SHA256 `D5C5077D6C5753430130DBB9692E933D2E41EDA89ADA3D27DAB5AB96A55D7AAD`; root code targets `2.7.0.0` (1.17).
-- Downloaded v5.0 ZIP root code declares `0x2000600010000`, i.e. 2.6.1.0. No compatible write path was tested. A declared-version mismatch alone does not prove failure.
-- CE: `C:/Program Files/Cheat Engine/cheatengine-x86_64.exe`; local API reference celua.txt in that folder.
-- Desktop app: `C:/Users/YAVUZ-PC/Desktop/Elden Ring Build Configurator`; shortcut same name + `.lnk`.
-- User preset `configs/Sovereign Spellblade.json` remains on desktop, excluded from repo. It imports 15 catalog items and one unresolved `Godrick's Great Rune`.
-- Saves: `%APPDATA%/EldenRing/76561197960271872/`. Many historic backups exist; inspect before using any. Never assume the active file is the original vanilla save.
+Live evidence (game 2.2.0.0, user-confirmed in-game): Genuine Tank preset — weapons/talismans equipped and visible in the
+Equipment menu; Hydromancer Wade preset — 9/9 slots and 4/4 spells, `applied=True`. Details of offsets and calls:
+[../L2/game-internals.md](../L2/game-internals.md).
 
-## Tests actually run
+## Behaviour worth knowing
 
-WPF XAML/control/catalog construction using `BuildStudio.ps1 -CheckOnly`; resolver test on user's existing preset, exact Magic Claymore ID/upgrades/Ash separation, unknown name reporting and VIG=100 rejection. No full GUI interaction test or live-game mutation/readback test passed.
+- The user's game runs as administrator, so the Studio must run elevated to attach; it offers that itself ("Click to connect as admin").
+- Every apply: save backup → stats (read back) → grant missing quantities only → equip (calibrated, via game routine,
+  invalid copies replaced) → spells (via game routine) → ledger `app/runtime/ledger-*.txt`. Receipt `applied=true` only when nothing failed.
+- Flasks count as one item; spells beyond the unlocked memory slots are reported, not forced.
+
+## Not implemented / partial
+
+See [next_steps.md](next_steps.md): Ash of War attachment, removing invisible copies, near-miss fuzzy matches, quick items/pouch,
+somber upgrade limits, apply off the UI thread, preset delete/rename.
+
+## Local machine (never commit)
+
+- Game `D:/Games/ELDEN RING/Game/eldenring.exe` FileVersion 2.2.0.0 (runs elevated, offline, EAC off).
+- Hexinton CT `C:/Users/YAVUZ-PC/Downloads/eldenring_all-in-one_Hexinton-v8.0.1.CT` (reference only; targets 2.7.0.0).
+- Saves `%APPDATA%/EldenRing/76561197960271872/`.
+- Retired copies (leave untouched): `Documents/Codex/2026-09-06/.../build_configurator`, `Desktop/Elden Ring Build Configurator`.

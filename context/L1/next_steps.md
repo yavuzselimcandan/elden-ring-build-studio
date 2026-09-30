@@ -1,10 +1,60 @@
-# Next steps
+# Open work (backlog) — the single list of unfinished and not-started items
 
-1. Do not build another frontend or plugin first. Establish a minimal compatible game connection. Read local CT root/version logic and actual ItemGib/stat APIs; inspect compatible older versions only if needed. First use read-only process/character/version checks. Treat a warning about table version as a hypothesis to test, not a blanket refusal or permission to ignore checks.
-2. Document actual CE entry points. Record identifiers in XML are not symbols/addresses. Prove the bootstrap and process attachment; previous `/load /luacall` arguments were guessed from binary strings and never verified. Consult CE's official implementation/docs or locally installed API reference.
-3. With a recoverable save checkpoint and the user-authorized offline target established, implement one bounded item operation and one reversible stat operation with readback. Stop on uncertainty; do not replay ambiguous item grants.
-4. Only after that evidence, implement the adapter's real capability manifest, per-version catalog validation, category encoding, upgrade/affinity/Ash behavior, deduplication and receipts. Wire UI auto-apply to changed normalized plans and character/session identity.
-5. Unify preset.schema.json, model, plugin skill and documentation. Add per-item limits, ambiguity handling and level/class constraints. Existing general 25 cap is insufficient for somber weapons.
-6. Test the chat-generated preset end to end; clearly distinguish granting items, equipping them and changing affinities. Finish native UI usability after the backend works.
+Ordered by value to the user. Each item: what is missing, where to start, and how to know it is done.
+When you finish or change an item, edit this file in the same commit.
 
-Publish context and source now as requested. Do not claim the repository is a finished playable tool. Future models must append a session record and update L1 after each work session.
+## 1. Ash of War attachment — NOT STARTED (most requested)
+
+- Now: Ashes are granted, weapons are granted/equipped, but the Ash is not attached. The apply receipt says
+  "<weapon>: Ash of War not attached".
+- Start: search the TGA CT for the gem mounting routine (`gh search code "gem" --repo The-Grand-Archives/Elden-Ring-CT-TGA`,
+  look for "Ash of War"/"Gem"/"setGem"/"mount"). Ash handles are 0xC08xxxxx (see context/L2/game-internals.md).
+  Plan items already carry `ashOfWarId` (BuildModel.ps1). Unique/somber weapons (no affinity variants) cannot take ashes;
+  the resolver already treats their named skill as built-in.
+- Affinity follows the ash in-game (Heavy/Keen/...); the catalog has one item id per affinity, so decide whether to grant
+  the infused id directly (current behaviour when the preset names "Heavy Claymore") or re-infuse via the routine.
+- Done when: a preset with `ashOfWar` applies with the ash shown on the weapon in the Equipment menu (user confirms).
+
+## 2. Remove invisible copies left by the old grant bug — NOT STARTED
+
+- Invisible instances (created before commit e9da453) sit in the inventory list. Harmless, but clutter.
+- Start: find the game's remove/discard item routine (TGA CT; look for "removeItem"/"discard"/"ItemRemove").
+  Detection: equipping them leaves the ChrAsm id at -1 (see `invalid-instance` in `Equipment.Apply`).
+- Done when: a one-off tool (tools/) removes only refused instances, with a save backup, verified by the user.
+
+## 3. Fuzzy matching near-misses — PARTIAL
+
+- "Great Oracle Bubble" → "Great Oracular Bubble" is only a suggestion (score < 0.90 auto-accept threshold in
+  `Resolve-CatalogName`, BuildModel.ps1). Gemini also invents non-existent pieces ("Dryleaf Leg Wraps", "Yumi").
+- Idea: word-level stemming (oracle/oracular), or accept when the best candidate shares all content-word stems and the
+  runner-up is clearly worse. Add cases to `app/test_resolver.ps1` first.
+
+## 4. Quick items / pouch — NOT STARTED
+
+- equipGear handles slots 0–21 only. TGA uses a second routine `equipGoods`
+  (AOB `?? FA ?? ?? 0F ?? 81 C1 ?? ?? ?? ?? ?? 8B C1 E9`) for slots 22–38 (quick items/pouch).
+  The line format has no key for quick items yet (add e.g. `QUICK:`), and `Get-BuildLoadout` has no quick slots.
+
+## 5. Validation gaps — NOT STARTED
+
+- Somber weapons max +10 (resolver allows up to 25). Derive from the catalog (no affinity variants and not staff/seal)
+  or a small table; warn in the resolver.
+- Stat totals vs. class minimums / level are not checked (rune level is only displayed).
+
+## 6. UI polish — PARTIAL
+
+- Apply runs on the UI thread (window freezes ~1–5 s during apply). Move `Invoke-BuildPlan` to a runspace.
+- No delete/rename preset in the UI (duplicates like "Hydromancer Wade (2)" must be removed in the folder).
+- `test_full_plan.ps1` reads a machine-specific preset path; make it skip when absent.
+
+## 7. Repository housekeeping
+
+- PR #1 (`overhaul/v3` → `main`) is open; merge when the user agrees.
+- The GitHub repository is **public** (older docs said private). Changing visibility is the user's decision.
+- The retired CE autorun `C:/Program Files/Cheat Engine/autorun/zz_EldenRingBuildStudio.lua` is inert; the user may delete it.
+
+## Done (for orientation; details in context/L3/sessions/2026-09-29-overhaul.md)
+
+Resolver rebuild · 3-pane UI with slot board · schema 3.0 · single install + desktop shortcut/icon · Cheat Engine removed ·
+elevation handling · item grant fix · equip via game routine with invalid-copy repair · spells via changeMagic ·
+Gemini prompt + clipboard import · Turkish-locale regex fix · flask quantities · duplicate paste fix.

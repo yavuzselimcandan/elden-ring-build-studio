@@ -1,17 +1,48 @@
-# Agent handoff contract
+# Agent guide — read this first
 
-Read `context/00_index.md`, then all four L1 files before doing work. Read the relevant L2 files before changing architecture, presets or game integration. Read L3 only when investigating prior attempts.
+Elden Ring Build Studio: a Windows desktop app that turns a build description (from YouTube's Gemini or another chat) into
+a preset and applies it to the user's **offline** game — stats, items, equipment, spells — without Cheat Engine.
+**It works end to end and was confirmed in-game on 2026-09-29.**
 
-The project is **incomplete**. Saving a preset, resolving an ID, starting Cheat Engine, or finding a PID does not mean a build was applied. Never report success without evidence of the intended outcome. The current backend deliberately refuses writes.
+## Read in this order (≈10 minutes)
 
-Respect the user's scarce usage budget. Prefer concise, targeted reads and checks. Do not spawn agents unless authorized. User previously preferred Luna execution and one bounded Astra architecture consultation; those consultations already happened. Do not silently spend another expensive consultation.
+1. [context/L1/current_state.md](context/L1/current_state.md) — what exists, what is verified, where everything lives.
+2. [context/L1/next_steps.md](context/L1/next_steps.md) — **the backlog: every unfinished or half-done item, with leads.**
+3. [context/L1/constraints.md](context/L1/constraints.md) — user rules (git discipline, delegation, language) and pitfalls.
+4. [context/L2/game-internals.md](context/L2/game-internals.md) — verified offsets, signatures, calling conventions. Required before touching game code.
+5. [context/L2/architecture.md](context/L2/architecture.md), [workflows.md](context/L2/workflows.md) (tests, live testing, release), [decisions.md](context/L2/decisions.md).
+6. Only if investigating history: [context/L3/sessions/](context/L3/sessions/index.md).
 
-Keep the desired workflow: user sends video/link in ordinary chat; AI emits a concrete preset; native desktop app loads it and eventually applies automatically to the user's offline game. A manual JSON editor or requiring the user to operate CE is not the intended final product.
+## Rules
 
-Do not commit game binaries, downloaded CT archives/tables, saves, runtime presets, credentials or logs. Do not initialize or push the enclosing Documents repository. This handoff directory is the repository root.
+- **Version control is a user requirement:** feature branch, small descriptive commits (end with the Co-Authored-By trailer
+  your harness specifies), push often, PR into `main`, never force-push. Never commit `app/configs/`, `app/runtime/`,
+  cheat tables, saves or binaries.
+- **Run the tests before every commit:** `app/test_*.ps1` and `app/BuildStudio.ps1 -CheckOnly` (see workflows.md).
+- **Game-facing changes:** use the game's own routines (AddItem, equipGear, changeMagic) rather than writing game structures;
+  probe read-only first (`tools/Probe-Game.ps1`); every apply backs up the save; read back every change; and have the user
+  confirm the in-game result before calling a new feature done. Never apply offsets from a cheat table without checking
+  them against the running game version (they drifted by 4 bytes once).
+- The game runs elevated on the user's PC: live helpers must be run elevated (pattern in workflows.md), which shows the
+  user a UAC prompt — tell them before you trigger it.
+- **Delegation:** only Codex `gpt-6-luna` with reasoning `max`, never astra/sol; simple bounded tasks only; review its diff.
+- Be honest about evidence: distinguish "tested with mocks", "read back from memory" and "user saw it in-game".
+- Answer the user in Turkish; keep code, commits and docs in English.
 
-Preserve existing user saves and presets. No destructive replacement or live-game tests using guessed offsets/IDs. Table record IDs are not memory addresses. Version mismatch is evidence requiring investigation, not proof of incompatibility. Do not disable checks or spoof versions to manufacture success.
+## After every work session
 
-After EVERY working session, append `context/L3/sessions/YYYY-MM-DD-description.md` recording agent/model (or unknown), user request, files changed, commands/tests and outcomes, actions on external systems, outstanding risks and exact next step. Update L1 current_state/next_steps and L2 decisions when needed; link the session from L3/sessions/index.md. Distinguish observed facts, hypotheses and untested code. Do not overwrite history or fabricate attribution.
+Append `context/L3/sessions/YYYY-MM-DD-topic.md` (agent/model, request, files changed, tests and outcomes, external actions,
+risks, next step), link it from `context/L3/sessions/index.md`, and update `current_state.md` / `next_steps.md`
+(and `decisions.md` for architectural choices) in the same PR.
 
-Source edits use apply_patch. Keep the source app and installed desktop copy explicitly distinguished. Deploy only named files and preserve user configs. For Windows GUI launches use hidden helper windows; native UI itself is meant to be visible. No automatic test should modify the user's game just because it happens to be running.
+## Map
+
+```
+app/BuildStudio.ps1      UI logic (WPF)          app/ui/MainWindow.xaml   UI layout
+app/BuildText.ps1        Gemini prompt + chat text import
+app/BuildModel.ps1       preset → plan (resolve, loadout)   app/lib/Resolver.cs   matching/parsing (C#, Add-Type)
+app/backend.ps1          plan → game (receipt)   app/lib/GameMemory.cs   process access   app/lib/BuildEngine.cs   game logic
+app/catalog.json         6,352 item names/ids    app/preset.schema.json  preset contract
+app/test_*.ps1, app/tests/   tests               tools/   Install, Probe-Game, Apply-Preset, New-AppIcon, Test-LiveApply
+skills/elden-ring-build-config/SKILL.md   instructions for chat models producing presets
+```

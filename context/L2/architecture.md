@@ -1,17 +1,42 @@
 # Architecture
 
-Intended: chat source interpretation -> v2 preset -> desktop editor/resolver -> validated plan -> CE adapter -> game -> receipt/readback -> UI status.
-
-Actual: v2/legacy preset -> BuildStudio -> BuildModel + table catalog -> preset JSON and `.plan.json`. The remaining backend arrow is absent.
-
-```json
-{"schemaVersion":"2.0","name":"Example","source":{"url":"","evidence":"Observed facts only","unresolved":[]},"attributes":{"vig":null,"mind":null,"end":null,"str":null,"dex":null,"int":null,"fai":null,"arc":null},"items":[{"category":"weapon","name":"Magic Claymore","upgrade":25,"quantity":1,"ashOfWar":"Carian Sovereignty"}]}
+```
+YouTube "Ask" (Gemini) / other chat
+        │  line format (BUILD/STATS/R1../TALISMAN/SPELL/ITEM) or preset JSON, via clipboard
+        ▼
+app/BuildStudio.ps1  (WPF, layout in app/ui/MainWindow.xaml)
+  ├─ app/BuildText.ps1      clipboard text → preset object (schema 3.0)
+  ├─ app/BuildModel.ps1     preset → plan: resolve names (app/lib/Resolver.cs + app/catalog.json), loadout slots
+  └─ app/backend.ps1        plan → game, synchronous, returns a receipt
+        ├─ app/lib/GameMemory.cs   open process, read/write, signature scan, remote call (no Cheat Engine)
+        └─ app/lib/BuildEngine.cs  stats · AddItem grants · inventory discovery · equip (game equipGear) ·
+                                   spells (game changeMagic) · calibration / read-back / repair
+        ▼
+eldenring.exe (offline, usually elevated)          app/runtime/: save backups, ledger-*.txt, equip-calibration.txt
 ```
 
-Categories: weapon, armor, talisman, goods, ash. Spells/materials/crystal tears use goods. Numeric suffixes in canonical talisman names are retained; weapon upgrades are separate. Unknown attributes should preserve existing stats; source facts must not be invented.
+## Data contracts
 
-Observed table lookup example: Magic Claymore -> 3180800, upgrade=25; Carian Sovereignty -> 418000. This is NOT a verified instruction to add 25 to an address/ID or directly write those values. A compatible item creation API must encode category, level and variant correctly.
+- **Preset (schema 3.0, `app/preset.schema.json`)**: user intent, item *names*. `items[]` with `category`
+  (weapon/armor/talisman/goods/ash), `name`, `upgrade`, `quantity`, optional `ashOfWar`, `affinity`, `slot`
+  (`R1-3`, `L1-3`, `Arrow1/2`, `Bolt1/2`, `Head`, `Chest`, `Arms`, `Legs`, `Talisman1-4`, `Spell1-14`, `Inventory`).
+  2.0 presets and legacy `equipment` string lists are still read.
+- **Plan (schema 3.0, `*.plan.json`)**: resolved rows (`itemId`, `match` method, `suggestions`, `rowIndex` back into the
+  preset), `notes` (every automatic correction), `issues` (unresolved/invalid), `loadout` (slot → item).
+- **Receipt** from `Invoke-BuildPlan`: `ok`, `applied` (true only if nothing failed), `message`, `lines`, `problems`, `ledger` path.
 
-Observed CT record IDs: root Enable 1337092247; ItemType 1337114353; ItemID 1337102251; Num 1337114354; AddItem_ 1337102252. Actual textual addresses seen were ItemCategory, ItemSpawnData+4 and ItemSpawnData+8; AddItem_ is an Auto Assembler script calling a thread, not a writable bool. These details were inspected only. Verify parent activation, dependencies, versions and the concrete function before use.
+## Resolver pipeline (per row)
 
-Cheat Engine bridge should accept only validated data, not arbitrary Lua from a preset. A process being present or a record name existing is not evidence of successful application.
+parse string (`+N`, `xN`, `(Ash of War: …)`/`(Ash: …)`, `Name (Heavy)`, `Head:` prefix, physick `A + B`) → alias →
+normalised exact key (case, diacritics, apostrophes, punctuation) → plural folding → unique category correction →
+duplicate names → lowest id (+note) → fuzzy auto-accept only at ≥0.90 with a ≥0.04 margin → otherwise unresolved with
+suggestions. Note-like rows (" / ", "situational"…) are ignored with a note.
+
+## Apply pipeline (backend.ps1)
+
+status/attach (elevation check) → save backup → stats (write, read back, roll back on mismatch) → inventory discovery →
+grant only missing quantities (flasks count once) and confirm counts → equipment: calibrate layout, equip via game routine,
+wait for the id array, replace refused (invalid) copies with fresh grants, retry items moving between slots → spells:
+check layout, plan memory slots, changeMagic, read back → ledger + receipt.
+
+Offsets, signatures and calling conventions: [game-internals.md](game-internals.md).

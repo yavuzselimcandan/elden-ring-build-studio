@@ -1,14 +1,21 @@
-# Elden Ring Build Studio — AI handoff
+# Elden Ring Build Studio
 
-**Incomplete: preset editing/resolution works; live-game application is not implemented or verified.**
+Turn a build from a YouTube video into your character in the **offline** game: stats, weapons, armor, talismans and
+spells — equipped and memorised — in one click. Native Windows app, no Cheat Engine, no installs.
 
-Start with [context/00_index.md](context/00_index.md) and [AGENTS.md](AGENTS.md). These explain the intended workflow, actual state, mistakes to avoid, evidence and the next concrete task. Every future agent must log its session.
+**Status:** working end to end on game version 2.2.0.0 (verified in-game 2026-09-29).
+Not yet: Ash of War attachment and a few smaller items — see [the backlog](context/L1/next_steps.md).
 
-- `app/`: snapshot of local application source; no saves or downloaded CE/game assets.
-- `skills/elden-ring-build-config/`: current chat-side import instructions, copied for continuation; local paths need adaptation on another machine.
-- `context/`: L0 index, L1 essentials, L2 domain context, L3 session/archive history.
-- `PUBLISH.md`: repository publishing information when supplied by the publishing agent.
+## Use
 
-On Windows, run `powershell.exe -NoProfile -STA -File app/BuildStudio.ps1`. Use `-CheckOnly` to construct the UI and load its catalog without showing the window. No Python or .NET SDK is required for this WPF editor. Current code does not grant game items.
+1. Run `tools/Install.ps1` once (creates the **Elden Ring Build Studio** desktop shortcut).
+2. In Build Studio press **Gemini prompt**, open the build video on YouTube, press **✦ Ask**, paste, send, copy the answer.
+3. Switch back to Build Studio — the build is imported automatically. Fix any red item with the suggestions on the right.
+4. Start the game offline (Easy Anti-Cheat off) and load your character. If the chip says *Click to connect as admin*, click it.
+5. Press **Apply to game**. Your save is backed up first (`app/runtime/backups/`).
 
-Canonical schema: `app/preset.schema.json`. Historical files in app/ are documented in the archive and must not override the current context. Table catalog IDs have not been validated for live application on the installed older game.
+## For developers and AI agents
+
+Start with **[AGENTS.md](AGENTS.md)**. Tests: `app/test_*.ps1`. Game internals: [context/L2/game-internals.md](context/L2/game-internals.md).
+
+Only for your own single-player game, offline. Do not use online.
